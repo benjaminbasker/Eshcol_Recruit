@@ -15,21 +15,29 @@ final class EmailController extends Controller
     public function index(): never
     {
         $tab = in_array($_GET['tab'] ?? '', ['held', 'pending', 'sent', 'failed', 'unsure'], true) ? $_GET['tab'] : null;
-        $counts = array_column($this->db->all("SELECT status, COUNT(*) n FROM email_queue WHERE status <> 'cancelled' GROUP BY status"), 'n', 'status');
+        $mine = \Eshcol\Ats\Access::emailFilter(Auth::user(), 'e');
+        $counts = array_column($this->db->all("SELECT e.status, COUNT(*) n FROM email_queue e WHERE e.status <> 'cancelled' AND $mine GROUP BY e.status"), 'n', 'status');
         $tab ??= ($counts['held'] ?? 0) ? 'held' : 'pending';
         $order = $tab === 'sent' ? 'e.sent_at DESC' : ($tab === 'pending' ? 'e.priority, e.not_before' : 'e.id DESC');
         $rows = $this->db->all("SELECT e.id, e.kind, e.candidate_id, e.to_email, e.to_name, e.subject, e.status, e.hold_reason, e.not_before,
                                        e.attempts, e.last_error, e.created_at, e.sent_at, c.full_name
                                 FROM email_queue e LEFT JOIN candidates c ON c.id = e.candidate_id
-                                WHERE e.status = ? ORDER BY $order LIMIT 200", [$tab]);
+                                WHERE e.status = ? AND $mine ORDER BY $order LIMIT 200", [$tab]);
         $m = new Mailer($this->app);
         $this->view('emails/index', ['title' => 'Emails', 'tab' => $tab, 'rows' => $rows, 'counts' => $counts,
             'sentToday' => $m->sentToday(), 'cap' => $m->dailyCap(), 'live' => $m->live()]);
     }
 
     /** The email itself, for the preview frame. Served with a locked-down policy: no scripts, nothing fetched but images. */
+    /** 404 for an email this person may not see (one about a position hidden from them). */
+    private function visible(int $id): void
+    {
+        $this->db->col('SELECT 1 FROM email_queue e WHERE e.id = ? AND ' . \Eshcol\Ats\Access::emailFilter(Auth::user(), 'e'), [$id]) || Http::abort(404);
+    }
+
     public function body(int $id): never
     {
+        $this->visible($id);
         $html = $this->db->col('SELECT html FROM email_queue WHERE id = ?', [$id]);
         if ($html === false || $html === null) {
             Http::abort(404);
@@ -44,7 +52,8 @@ final class EmailController extends Controller
 
     public function show(int $id): never
     {
-        $e = $this->db->one('SELECT e.*, c.full_name FROM email_queue e LEFT JOIN candidates c ON c.id = e.candidate_id WHERE e.id = ?', [$id]);
+        $this->visible($id);
+        $e =$this->db->one('SELECT e.*, c.full_name FROM email_queue e LEFT JOIN candidates c ON c.id = e.candidate_id WHERE e.id = ?', [$id]);
         $e || Http::abort(404);
         $this->view('emails/show', ['title' => $e['subject'], 'e' => $e]);
     }
@@ -52,7 +61,8 @@ final class EmailController extends Controller
     /** Send a held email: as it is, or to a corrected address. */
     public function release(int $id): never
     {
-        $e = $this->db->one("SELECT * FROM email_queue WHERE id = ? AND status = 'held'", [$id]);
+        $this->visible($id);
+        $e =$this->db->one("SELECT * FROM email_queue WHERE id = ? AND status = 'held'", [$id]);
         $e || Http::abort(404);
         $to = mb_strtolower(trim((string) ($_POST['to_email'] ?? $e['to_email'])));
         if (!filter_var($to, FILTER_VALIDATE_EMAIL) || ($to !== $e['to_email'] && !Mailer::deliverable($to))) {
@@ -77,6 +87,7 @@ final class EmailController extends Controller
 
     public function cancel(int $id): never
     {
+        $this->visible($id);
         $this->db->run("UPDATE email_queue SET status = 'cancelled' WHERE id = ? AND status IN ('held','pending','failed','unsure')", [$id]);
         Audit::log('email_cancelled', 'email', $id);
         Http::flash('ok', 'Cancelled. Nothing will be sent.');
@@ -85,7 +96,8 @@ final class EmailController extends Controller
 
     public function retry(int $id): never
     {
-        $was = (string) $this->db->col('SELECT status FROM email_queue WHERE id = ?', [$id]);
+        $this->visible($id);
+        $was =(string) $this->db->col('SELECT status FROM email_queue WHERE id = ?', [$id]);
         $this->db->run("UPDATE email_queue SET status = 'pending', attempts = 0, not_before = NOW() WHERE id = ? AND status IN ('failed','unsure')", [$id]);
         Audit::log('email_retried', 'email', $id, ['was' => $was]);
         Http::flash('ok', 'Queued again. It goes out with the next send.');

@@ -153,6 +153,15 @@ $kfOwn = (new \Eshcol\Ats\Services\KeyFacts($app))->forCandidates([$cid]);
 unset($_SESSION['uid']);
 $hasOwn = fn ($kf) => in_array($own, array_map('intval', array_column($kf[$cid]['positions'] ?? [], 'role_id')), true);
 $check('candidate list: the recruiter does not see the private position; the owner does', !$hasOwn($kfRec) && $hasOwn($kfOwn));
+// Emails about a private position (16 Nov 2026, found during the audit work).
+$qMail = (int) $qs->email($lead, 'invite', $owner);
+$seesMail = fn (array $u, int $id) => (bool) $db->col('SELECT 1 FROM email_queue e WHERE e.id = ? AND ' . Access::emailFilter($u, 'e'), [$id]);
+$alertOwner = $db->insert('email_queue', ['kind' => 'alert', 'to_email' => "owner.$tag@types.test", 'subject' => 'Zz alert', 'html' => 'x', 'text' => 'x', 'status' => 'sent']);
+$alertRec = $db->insert('email_queue', ['kind' => 'alert', 'to_email' => "rec.$tag@types.test", 'subject' => 'Zz alert', 'html' => 'x', 'text' => 'x', 'status' => 'sent']);
+$check('emails: the details request for the private position is hidden from the recruiter, not from its hiring manager or the owner',
+    $qMail > 0 && !$seesMail($R, $qMail) && $seesMail($H, $qMail) && $seesMail($O, $qMail));
+$check('emails: internal mail addressed to someone else is hidden from that recruiter; their own is not', !$seesMail($R, $alertOwner) && $seesMail($R, $alertRec));
+$db->run('DELETE FROM email_queue WHERE id IN (?, ?, ?)', [$alertOwner, $alertRec, $qMail]);
 $check('a page missing from the list is refused when positions are hidden', !Access::allowsRoute($R, $C . 'MadeUpController', 'thing', [$appOf($place)]));
 $check('...and allowed for the owner', Access::allowsRoute($O, $C . 'MadeUpController', 'thing', [$appOf($place)]));
 

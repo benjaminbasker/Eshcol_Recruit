@@ -268,7 +268,8 @@ final class CandidateController extends Controller
             'workHistory' => (new \Eshcol\Ats\Services\AiReading($this->app))->history($id),
             'education' => (new \Eshcol\Ats\Services\AiReading($this->app))->education($id),
             'clientViews' => array_column($this->db->all('SELECT i.application_id, i.decision, i.comment, i.decided_at, i.shortlist_id FROM shortlist_items i JOIN applications a ON a.id = i.application_id WHERE a.candidate_id = ? ORDER BY i.id', [$id]), null, 'application_id'),
-            'emails' => $this->db->all('SELECT id, kind, subject, status, hold_reason, sent_at, created_at FROM email_queue WHERE candidate_id = ? ORDER BY id DESC LIMIT 20', [$id]), 'openRoles' => $openRoles,
+            'emails' => $this->db->all('SELECT e.id, e.kind, e.subject, e.status, e.hold_reason, e.sent_at, e.created_at FROM email_queue e WHERE e.candidate_id = ? AND '
+                . \Eshcol\Ats\Access::emailFilter(Auth::user(), 'e') . ' ORDER BY e.id DESC LIMIT 20', [$id]), 'openRoles' => $openRoles,
             'sources' => json_decode($c['field_sources'] ?? '{}', true) ?: [], 'timeline' => $this->timeline($id, $notes),
             'category' => $this->db->one('SELECT cc.*, u.name AS reviewer FROM candidate_categories cc LEFT JOIN users u ON u.id = cc.reviewed_by WHERE cc.candidate_id = ? AND cc.is_current = 1 ORDER BY cc.id DESC LIMIT 1', [$id]),
             'categoryHistory' => $this->db->all('SELECT cc.*, u.name AS who FROM candidate_categories cc LEFT JOIN users u ON u.id = cc.created_by WHERE cc.candidate_id = ? ORDER BY cc.id DESC LIMIT 10', [$id]),
@@ -320,7 +321,8 @@ final class CandidateController extends Controller
                                  WHERE a.candidate_id = ? AND ' . \Eshcol\Ats\Access::roleFilter(Auth::user(), 'r.id') . ' ORDER BY h.id DESC LIMIT 60', [$id]) as $h) {
             $t[] = ['at' => $h['created_at'], 'icon' => 'arrow-right', 'text' => 'Moved to ' . $h['stage'], 'sub' => $h['title'] . ($h['who'] ? ' · ' . $h['who'] : '') . ($h['note'] ? ' · ' . $h['note'] : '')];
         }
-        foreach ($this->db->all("SELECT id, subject, status, sent_at, created_at FROM email_queue WHERE candidate_id = ? AND status IN ('sent','held','pending','failed') ORDER BY id DESC LIMIT 30", [$id]) as $m) {
+        foreach ($this->db->all("SELECT e.id, e.subject, e.status, e.sent_at, e.created_at FROM email_queue e WHERE e.candidate_id = ? AND e.status IN ('sent','held','pending','failed') AND "
+            . \Eshcol\Ats\Access::emailFilter(Auth::user(), 'e') . ' ORDER BY e.id DESC LIMIT 30', [$id]) as $m) {
             $label = ['sent' => 'Email sent', 'held' => 'Email waiting for you to check the address', 'pending' => 'Email queued', 'failed' => 'Email failed'][$m['status']];
             $t[] = ['at' => $m['sent_at'] ?: $m['created_at'], 'icon' => 'mail', 'text' => $label, 'sub' => $m['subject'], 'url' => '/emails/' . (int) $m['id']];
         }

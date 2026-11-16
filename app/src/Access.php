@@ -209,6 +209,26 @@ final class Access
         return $mine ? "$col IN (" . implode(',', $mine) . ')' : '1=0';
     }
 
+    /**
+     * A SQL condition on email_queue (alias $e) leaving out, for a recruiter with hidden positions, the emails about those
+     * positions (found through what the email is for: the position, interview, details request or shortlist) and internal
+     * emails (alerts, summaries, client replies, tests) addressed to someone else. '1=1' for everyone else (16 Nov 2026).
+     */
+    public static function emailFilter(?array $user, string $e = 'e'): string
+    {
+        $hidden = self::restricted($user) ? [] : self::hiddenRoleIds($user);
+        if (!$hidden) {
+            return '1=1';
+        }
+        $in = implode(',', $hidden);
+        $me = App::get()->db->pdo()->quote(mb_strtolower((string) (App::get()->db->col('SELECT email FROM users WHERE id = ?', [(int) $user['id']]) ?: '')));
+        $role = "COALESCE(JSON_VALUE($e.meta, '$.roles[0]'),
+            (SELECT a.role_id FROM interviews i JOIN applications a ON a.id = i.application_id WHERE i.id = JSON_VALUE($e.meta, '$.interview')),
+            (SELECT a.role_id FROM questionnaires q JOIN applications a ON a.id = q.application_id WHERE q.id = JSON_VALUE($e.meta, '$.questionnaire')),
+            (SELECT s.role_id FROM shortlists s WHERE s.id = JSON_VALUE($e.meta, '$.shortlist')), 0)";
+        return "($role NOT IN ($in) AND ($e.kind NOT IN ('alert','digest','client_reply','test') OR LOWER($e.to_email) = $me))";
+    }
+
     /** Gives a contractor exactly these positions (replacing what they had). */
     public static function assign(int $userId, array $roleIds, int $grantedBy): void
     {
