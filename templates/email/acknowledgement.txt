@@ -1,0 +1,46 @@
+Thank you, {{first_name}}.
+
+Your application for {{role_phrase}}{{location_phrase}} has reached us safely.
+{{questions_block}}
+
+WHAT HAPPENS NEXT
+
+Our team reviews every application against what our client has asked for. If your experience is a good match, we will contact you to talk about next steps.
+
+Because we receive many applications, we may not be able to write to everyone individually after this message.
+
+Wishing you a happy and successful job search. Whichever way it goes with this role, we hope the right opportunity finds you soon.
+
+
+WHILE YOU WAIT
+
+Follow Eshcol Global on LinkedIn. We share new roles there as they open, so you hear about the next one early:
+https://www.linkedin.com/company/eshcolglobal/
+
+See all current openings. Another role may suit you even better:
+https://www.eshcolglobal.com/jobs/
+
+Read Eshcol Insights, practical articles on careers and the workplace:
+https://www.eshcolglobal.com/insights/
+
+
+ABOUT YOUR DETAILS
+
+If this role turns out not to be the right fit, we may consider you for other suitable roles with our clients over the next five years, as our privacy policy explains:
+https://www.eshcolglobal.com/privacy/
+
+If you would rather we didn't, just reply to this email with "Please remove me" and we will delete your details.
+
+
+Warm regards,
+
+Benjamin Basker
+Founder and Managing Director
+Eshcol Global Services (P) Ltd
+
+YouTube: https://www.youtube.com/@eshcolglobal
+Facebook: https://www.facebook.com/eshcolglobal/
+
+--
+You are receiving this email because you applied for a role handled by Eshcol Global.
+Eshcol Global Services Private Limited, #714A, Cabin # 3, Spencer Plaza, 7th Floor, Phase-II, #769, Anna Salai, Thousand Lights, Chennai - 600 002, Tamil Nadu, India

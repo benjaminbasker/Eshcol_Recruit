@@ -1,0 +1,26 @@
+{{headline}}
+{{role_title}}
+
+{{greeting}}
+
+{{note}}We have screened the candidates below against your requirements. Please open the shortlist to see each profile, then mark each candidate Shortlist, Hold or Not suitable, with a comment if you like. It takes a few minutes, and there is nothing to sign up for.
+
+View the candidates:
+{{link}}
+
+The link is private to you and works until {{expires}}. You can also download the profiles as a PDF from there.
+
+
+CONFIDENTIALITY
+
+These profiles are shared with you in confidence for this role. Candidates' contact details are shared once you decide to proceed with them. Please don't forward the profiles outside your organisation.
+
+
+Kind regards,
+
+{{sender}}
+Eshcol Global Services (P) Ltd
+
+--
+You are receiving this email because Eshcol Global is handling a role for your organisation.
+Eshcol Global Services Private Limited, #714A, Cabin # 3, Spencer Plaza, 7th Floor, Phase-II, #769, Anna Salai, Thousand Lights, Chennai - 600 002, Tamil Nadu, India

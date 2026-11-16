@@ -1,0 +1,25 @@
+# Secrets - never commit
+config.local.php
+
+# Candidate data / personal information - never commit
+storage/
+
+# Local-only tools (large binaries, PHP runtime, DB binaries)
+tools/
+
+# Build output (zips)
+deploy/
+
+# Restore drill artifacts (may contain real backup data)
+restore-drill/
+
+# Empty / local sample data
+samples/
+
+# Composer dependencies (install with `composer install`)
+app/vendor/
+
+# OS/editor cruft
+.DS_Store
+Thumbs.db
+*.log

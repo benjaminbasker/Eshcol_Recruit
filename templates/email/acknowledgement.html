@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<!--
+  Eshcol ATS - application acknowledgement email (HTML part).
+  Merge fields (the app HTML-escapes every value before inserting it):
+    {{first_name}}       Candidate's first name, e.g. Priya
+    {{role_phrase}}      e.g. "the Accounts Officer role", or for several roles
+                         "the Accounts Officer and Payroll Executive roles"
+    {{location_phrase}}  e.g. " in Pune" (leading space), or empty
+  Plain-text twin: acknowledgement.txt. Both are sent together.
+  House style: no em dashes. Images: logo only, hosted on eshcolglobal.com.
+  Palette (4 Nov v2): aubergine #320A67, grape #7946B2, plum #573A73,
+  gold #FFB85C (on aubergine only), sand #D8B36A / soft sand #E8D3A4
+  (panels, borders, rules only - too light for text on white), cream #F2EFE7.
+-->
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>We've received your application</title>
+<!--[if mso]>
+<noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript>
+<![endif]-->
+<style>
+  body { margin:0; padding:0; width:100% !important; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%; }
+  table { border-collapse:collapse; mso-table-lspace:0pt; mso-table-rspace:0pt; }
+  img { border:0; outline:none; text-decoration:none; -ms-interpolation-mode:bicubic; display:block; }
+  a { color:#7946B2; }
+  @media only screen and (max-width:660px) {
+    .container { width:100% !important; }
+    .px { padding-left:24px !important; padding-right:24px !important; }
+    .hero-h1 { font-size:28px !important; line-height:34px !important; }
+    .stack { display:block !important; width:100% !important; }
+    .stack-gap { padding-top:12px !important; padding-left:0 !important; }
+  }
+</style>
+</head>
+<body style="margin:0; padding:0; background-color:#F2EFE7;">
+
+<div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#F2EFE7; opacity:0;">
+  {{preheader}}&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;&#8199;&#847;
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#F2EFE7" style="background-color:#F2EFE7;">
+<tr><td align="center" style="padding:32px 12px;">
+
+  <!--[if mso]><table role="presentation" width="640" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+  <table role="presentation" class="container" width="100%" align="center" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:640px; margin:0 auto; background-color:#FFFFFF; border:1px solid #E8D3A4;">
+
+    <!-- Gold top rule -->
+    <tr><td height="4" bgcolor="#D8B36A" style="height:4px; line-height:4px; font-size:4px; background-color:#D8B36A;">&nbsp;</td></tr>
+
+    <!-- Logo band -->
+    <tr>
+      <td class="px" align="left" style="padding:26px 40px 22px 40px; background-color:#FFFFFF;">
+        <a href="https://www.eshcolglobal.com/" style="text-decoration:none;">
+          <img src="https://www.eshcolglobal.com/images/eshcol-logo-600.png" width="150" height="74" alt="Eshcol Global: People, Property" style="width:150px; height:auto; max-width:150px;">
+        </a>
+      </td>
+    </tr>
+
+    <!-- Hero -->
+    <tr>
+      <td class="px" bgcolor="#320A67" style="padding:36px 40px 38px 40px; background-color:#320A67;">
+        <p style="margin:0 0 12px 0; font-family:Arial, Helvetica, sans-serif; font-size:13px; line-height:18px; letter-spacing:1.5px; text-transform:uppercase; font-weight:bold; color:#FFB85C;">Application received</p>
+        <h1 class="hero-h1" style="margin:0 0 14px 0; font-family:Georgia, 'Times New Roman', serif; font-size:32px; line-height:38px; font-weight:normal; color:#FFFFFF;">Thank you, {{first_name}}.</h1>
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 16px 0;">
+          <tr><td width="56" height="3" bgcolor="#FFB85C" style="width:56px; height:3px; line-height:3px; font-size:3px; background-color:#FFB85C;">&nbsp;</td></tr>
+        </table>
+        <p style="margin:0; font-family:Arial, Helvetica, sans-serif; font-size:16px; line-height:24px; color:#E8E0F4;">Your application for {{role_phrase}}{{location_phrase}} has reached us safely.</p>
+      </td>
+    </tr>
+
+{{questions_block}}
+    <!-- What happens next -->
+    <tr>
+      <td class="px" style="padding:34px 40px 8px 40px;">
+        <h2 style="margin:0 0 10px 0; font-family:Georgia, 'Times New Roman', serif; font-size:20px; line-height:26px; font-weight:normal; color:#7946B2;">What happens next</h2>
+        <p style="margin:0 0 16px 0; font-family:Arial, Helvetica, sans-serif; font-size:15px; line-height:24px; color:#2A2238;">Our team reviews every application against what our client has asked for. If your experience is a good match, we will contact you to talk about next steps.</p>
+        <p style="margin:0; font-family:Arial, Helvetica, sans-serif; font-size:15px; line-height:24px; color:#2A2238;">Because we receive many applications, we may not be able to write to everyone individually after this message.</p>
+      </td>
+    </tr>
+
+    <!-- Good wishes panel (warm sand) -->
+    <tr>
+      <td class="px" style="padding:24px 40px 8px 40px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr><td height="3" bgcolor="#D8B36A" style="height:3px; line-height:3px; font-size:3px; background-color:#D8B36A;">&nbsp;</td></tr>
+          <tr>
+            <td bgcolor="#FBF5E8" style="padding:20px 24px; background-color:#FBF5E8; border:1px solid #E8D3A4; border-top:0;">
+              <p style="margin:0; font-family:Georgia, 'Times New Roman', serif; font-size:17px; line-height:26px; font-style:italic; color:#320A67;">Wishing you a happy and successful job search. Whichever way it goes with this role, we hope the right opportunity finds you soon.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- While you wait -->
+    <tr>
+      <td class="px" style="padding:30px 40px 6px 40px;">
+        <h2 style="margin:0 0 14px 0; font-family:Georgia, 'Times New Roman', serif; font-size:20px; line-height:26px; font-weight:normal; color:#7946B2;">While you wait</h2>
+
+        <!-- LinkedIn: primary action -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td class="stack" valign="middle" style="padding:0 0 18px 0; font-family:Arial, Helvetica, sans-serif; font-size:15px; line-height:23px; color:#2A2238;">
+              <strong style="color:#320A67;">Follow us on LinkedIn.</strong> We share new roles there as they open, so you hear about the next one early.
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0 0 26px 0;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td bgcolor="#7946B2" style="background-color:#7946B2; border-radius:6px; mso-padding-alt:12px 22px;">
+                    <a href="https://www.linkedin.com/company/eshcolglobal/" target="_blank" style="display:inline-block; padding:12px 22px; font-family:Arial, Helvetica, sans-serif; font-size:15px; line-height:20px; font-weight:bold; color:#FFFFFF; text-decoration:none; border-radius:6px;">Follow Eshcol Global on LinkedIn</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Two secondary links -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td class="stack" width="50%" valign="top" style="padding:0 10px 0 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td bgcolor="#FFFDF8" style="padding:16px 18px; background-color:#FFFDF8; border:1px solid #E8D3A4; border-left:3px solid #7946B2;">
+                  <a href="https://www.eshcolglobal.com/jobs/" target="_blank" style="font-family:Arial, Helvetica, sans-serif; font-size:15px; line-height:21px; font-weight:bold; color:#7946B2; text-decoration:none;">See all current openings &rsaquo;</a>
+                  <p style="margin:6px 0 0 0; font-family:Arial, Helvetica, sans-serif; font-size:13px; line-height:19px; color:#6E6780;">Another role may suit you even better.</p>
+                </td></tr>
+              </table>
+            </td>
+            <td class="stack stack-gap" width="50%" valign="top" style="padding:0 0 0 10px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td bgcolor="#FFFDF8" style="padding:16px 18px; background-color:#FFFDF8; border:1px solid #E8D3A4; border-left:3px solid #7946B2;">
+                  <a href="https://www.eshcolglobal.com/insights/" target="_blank" style="font-family:Arial, Helvetica, sans-serif; font-size:15px; line-height:21px; font-weight:bold; color:#7946B2; text-decoration:none;">Read Eshcol Insights &rsaquo;</a>
+                  <p style="margin:6px 0 0 0; font-family:Arial, Helvetica, sans-serif; font-size:13px; line-height:19px; color:#6E6780;">Practical articles on careers and the workplace.</p>
+                </td></tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- Your details -->
+    <tr>
+      <td class="px" style="padding:28px 40px 6px 40px;">
+        <h2 style="margin:0 0 10px 0; font-family:Georgia, 'Times New Roman', serif; font-size:17px; line-height:24px; font-weight:normal; color:#7946B2;">About your details</h2>
+        <p style="margin:0; font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:22px; color:#2A2238;">If this role turns out not to be the right fit, we may consider you for other suitable roles with our clients over the next five years, as our <a href="https://www.eshcolglobal.com/privacy/" target="_blank" style="color:#7946B2;">privacy policy</a> explains. If you would rather we didn't, just reply to this email with &ldquo;Please remove me&rdquo; and we will delete your details.</p>
+      </td>
+    </tr>
+
+    <!-- Signature -->
+    <tr>
+      <td class="px" style="padding:30px 40px 30px 40px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 18px 0;">
+          <tr><td width="40" height="2" bgcolor="#D8B36A" style="width:40px; height:2px; line-height:2px; font-size:2px; background-color:#D8B36A;">&nbsp;</td></tr>
+        </table>
+        <p style="margin:0 0 14px 0; font-family:Arial, Helvetica, sans-serif; font-size:15px; line-height:22px; color:#2A2238;">Warm regards,</p>
+        <p style="margin:0; font-family:Georgia, 'Times New Roman', serif; font-size:20px; line-height:26px; color:#320A67;">Benjamin Basker</p>
+        <p style="margin:2px 0 0 0; font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:20px; color:#7946B2;">Founder and Managing Director</p>
+        <p style="margin:0; font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:20px; color:#6E6780;">Eshcol Global Services (P) Ltd</p>
+      </td>
+    </tr>
+
+    <!-- Social row -->
+    <tr>
+      <td class="px" style="padding:0 40px 30px 40px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="padding:0 8px 0 0; font-family:Arial, Helvetica, sans-serif; font-size:13px; line-height:18px; color:#6E6780;">Find us on</td>
+            <td style="padding:0 6px 0 0;"><a href="https://www.linkedin.com/company/eshcolglobal/" target="_blank" style="display:inline-block; padding:5px 12px; border:1px solid #D8B36A; border-radius:14px; background-color:#FFFDF8; font-family:Arial, Helvetica, sans-serif; font-size:13px; line-height:16px; color:#573A73; text-decoration:none;">LinkedIn</a></td>
+            <td style="padding:0 6px 0 0;"><a href="https://www.youtube.com/@eshcolglobal" target="_blank" style="display:inline-block; padding:5px 12px; border:1px solid #D8B36A; border-radius:14px; background-color:#FFFDF8; font-family:Arial, Helvetica, sans-serif; font-size:13px; line-height:16px; color:#573A73; text-decoration:none;">YouTube</a></td>
+            <td><a href="https://www.facebook.com/eshcolglobal/" target="_blank" style="display:inline-block; padding:5px 12px; border:1px solid #D8B36A; border-radius:14px; background-color:#FFFDF8; font-family:Arial, Helvetica, sans-serif; font-size:13px; line-height:16px; color:#573A73; text-decoration:none;">Facebook</a></td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+    <!-- Footer -->
+    <tr>
+      <td class="px" bgcolor="#FAF6EE" style="padding:22px 40px 26px 40px; background-color:#FAF6EE; border-top:1px solid #E8D3A4;">
+        <p style="margin:0 0 8px 0; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:18px; color:#6E6780;">You are receiving this email because you applied for a role handled by Eshcol Global. <a href="https://www.eshcolglobal.com/privacy/" target="_blank" style="color:#6E6780;">How we use your details</a>.</p>
+        <p style="margin:0; font-family:Arial, Helvetica, sans-serif; font-size:12px; line-height:18px; color:#6E6780;">Eshcol Global Services Private Limited, #714A, Cabin # 3, Spencer Plaza, 7th Floor, Phase-II, #769, Anna Salai, Thousand Lights, Chennai - 600 002, Tamil Nadu, India</p>
+      </td>
+    </tr>
+
+  </table>
+  <!--[if mso]></td></tr></table><![endif]-->
+
+</td></tr>
+</table>
+</body>
+</html>
