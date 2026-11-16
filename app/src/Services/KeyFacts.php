@@ -79,7 +79,8 @@ final class KeyFacts
             $out[$cid]['positions'] = [];
         }
         foreach ($db->all("SELECT a.candidate_id, r.id AS role_id, r.title, s.name AS stage, s.kind AS stage_kind FROM applications a JOIN roles r ON r.id = a.role_id
-                JOIN stages s ON s.id = a.stage_id WHERE a.candidate_id IN ($in) AND r.is_pool = 0 AND r.status IN ('open','on_hold') ORDER BY s.sort DESC, r.title") as $ap) {
+                JOIN stages s ON s.id = a.stage_id WHERE a.candidate_id IN ($in) AND r.is_pool = 0 AND r.status IN ('open','on_hold')
+                AND " . \Eshcol\Ats\Access::roleFilter(\Eshcol\Ats\Auth::user(), 'r.id') . ' ORDER BY s.sort DESC, r.title') as $ap) {
             if (isset($out[(int) $ap['candidate_id']])) {
                 $out[(int) $ap['candidate_id']]['positions'][] = $ap;
             }

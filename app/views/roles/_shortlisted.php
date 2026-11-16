@@ -5,7 +5,7 @@ $shortRows = $shortSvc->shortlistedOn((int) $role['id']);
 if (!$shortRows) {
     return;
 }
-$ready = array_filter($shortRows, fn ($r) => $r['stage'] === 'Shortlisted' && !$r['sent_at']);
+$ready = array_filter($shortRows, fn ($r) => \Eshcol\Ats\Services\Stages::is(\Eshcol\Ats\App::get(), (int) $r['stage_id'], \Eshcol\Ats\Services\Stages::SHORTLISTED) && !$r['sent_at']);
 $canSend = \Eshcol\Ats\Services\Engagement::of($role) !== 'inhouse';
 $bandTone = ['Strong' => 'yes', 'Possible' => 'sand', 'Weak' => 'no'];
 $shortKf = (new \Eshcol\Ats\Services\KeyFacts(\Eshcol\Ats\App::get()))->forCandidates(array_column($shortRows, 'candidate_id'));

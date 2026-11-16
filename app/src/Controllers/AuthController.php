@@ -73,7 +73,10 @@ final class AuthController extends Controller
         if ($u['totp_enabled']) {
             Http::redirect('/login/code');
         }
-        $_SESSION['setup_secret'] ??= Totp::newSecret();
+        if (($_SESSION['setup_uid'] ?? null) !== $uid || empty($_SESSION['setup_secret'])) {
+            $_SESSION['setup_secret'] = Totp::newSecret();
+            $_SESSION['setup_uid'] = $uid;
+        }
         $secret = $_SESSION['setup_secret'];
         $uri = Totp::uri('Eshcol Recruit', $u['email'], $secret);
         $svg = (new Writer(new ImageRenderer(new RendererStyle(220, 1), new SvgImageBackEnd())))->writeString($uri);
@@ -89,13 +92,21 @@ final class AuthController extends Controller
     public function setup(): never
     {
         $uid = $this->needPending();
-        $secret = $_SESSION['setup_secret'] ?? null;
+        $secret = ($_SESSION['setup_uid'] ?? null) === $uid ? ($_SESSION['setup_secret'] ?? null) : null;
         if (!$secret || !Totp::verify($secret, (string) Http::input('code'))) {
             $_SESSION['setup_error'] = 'That code did not match. Check the time on your phone is set automatically, then try the newest code.';
             Http::redirect('/login/setup');
         }
-        $this->db->run('UPDATE users SET totp_secret = ?, totp_enabled = 1 WHERE id = ?', [$secret, $uid]);
-        unset($_SESSION['setup_secret']);
+        $saved = $this->db->run(
+            'UPDATE users SET totp_secret = ?, totp_enabled = 1 WHERE id = ? AND totp_enabled = 0 AND is_active = 1',
+            [$secret, $uid]
+        )->rowCount();
+        unset($_SESSION['setup_secret'], $_SESSION['setup_uid']);
+        if ($saved !== 1) {
+            unset($_SESSION['pending_uid'], $_SESSION['pending_at']);
+            Http::flash('info', 'Please sign in again.');
+            Http::redirect('/login');
+        }
         Audit::log('2fa_enabled', 'user', $uid);
         Auth::complete($uid);
         Http::flash('ok', 'Two-step sign-in is on. From now on you will need your authenticator app to sign in.');

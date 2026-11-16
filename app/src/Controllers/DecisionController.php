@@ -153,7 +153,7 @@ final class DecisionController extends Controller
     public static function joinBlocked(\Eshcol\Ats\App $app, int $appId, int $toStage): ?string
     {
         $db = $app->db;
-        if ((string) $db->col('SELECT name FROM stages WHERE id = ?', [$toStage]) !== 'Joined') {
+        if (!\Eshcol\Ats\Services\Stages::is($app, $toStage, \Eshcol\Ats\Services\Stages::JOINED)) {
             return null;
         }
         $eng = (string) $db->col('SELECT r.engagement FROM applications a JOIN roles r ON r.id = a.role_id WHERE a.id = ?', [$appId]);
@@ -169,8 +169,7 @@ final class DecisionController extends Controller
     public static function offerBlocked(\Eshcol\Ats\App $app, int $appId, int $toStage): ?string
     {
         $db = $app->db;
-        $stage = (string) $db->col('SELECT name FROM stages WHERE id = ?', [$toStage]);
-        if ($stage !== 'Offer made') {
+        if (!\Eshcol\Ats\Services\Stages::is($app, $toStage, \Eshcol\Ats\Services\Stages::OFFER)) {
             return null;
         }
         $eng = (string) $db->col('SELECT r.engagement FROM applications a JOIN roles r ON r.id = a.role_id WHERE a.id = ?', [$appId]);

@@ -165,7 +165,7 @@ $row = function (array $a) use ($stages, $role, $qs, $clientDecisions, $notice, 
 <div class="tiles">
   <div class="tile hl"><b><?= number_format($total) ?></b><span>Candidates</span></div>
   <div class="tile"><b><?= count($likely) ?></b><span>Strong or Possible</span></div>
-  <?php if (\Eshcol\Ats\Services\Engagement::of($role) === 'inhouse'): $ivN = count(array_filter($all, fn ($a) => in_array($a['stage'] ?? '', ['Client interview', 'Offer made', 'Joined'], true))); ?>
+  <?php if (\Eshcol\Ats\Services\Engagement::of($role) === 'inhouse'): $ivN = count(array_filter($all, fn ($a) => in_array(\Eshcol\Ats\Services\Stages::code(\Eshcol\Ats\App::get(), (int) ($a['stage_id'] ?? 0)), ['interview', 'offer', 'joined'], true))); ?>
   <div class="tile"><b><?= $ivN ?></b><span>At interview or later</span></div>
   <?php else: ?><div class="tile"><b><?= $sentN ?></b><span>Sent to client</span></div><?php endif; ?>
   <div class="tile"><b><?= $openDays ?> day<?= $openDays === 1 ? '' : 's' ?></b><span>Open for</span></div>

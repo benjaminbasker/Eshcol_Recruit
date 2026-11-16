@@ -95,6 +95,7 @@ final class Auth
         $db->run('DELETE FROM auth_throttle WHERE ip = ?', [$ip]);
 
         session_regenerate_id(true);
+        unset($_SESSION['setup_secret'], $_SESSION['setup_uid'], $_SESSION['setup_error']);
         $_SESSION['pending_uid'] = (int) $u['id'];
         $_SESSION['pending_at'] = time();
         return null;

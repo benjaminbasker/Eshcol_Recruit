@@ -91,6 +91,8 @@ $check('it starts as a draft: nothing sent, nobody moved', $db->col('SELECT stat
     && (int) $db->col('SELECT stage_id FROM applications WHERE id = ?', [$aa]) === $stage('Shortlisted'));
 $check('the client\'s link does not open a draft', ($svc->byToken(substr($svc->link($id), strrpos($svc->link($id), '/s/') + 3))['status'] ?? '') === 'draft');
 $check('sending the draft works', $svc->send($id, $uid) === null && $svc->send($id, $uid) !== null);
+$check('audit R1: sent twice, queued once (the email is part of the same step as "sent")', (int) $db->col("SELECT COUNT(*) FROM email_queue WHERE kind = 'shortlist' AND id > ? AND JSON_VALUE(meta, '$.shortlist') = ?", [$maxEmail, $id]) === 1
+    && (int) $db->col('SELECT email_id FROM shortlists WHERE id = ?', [$id]) > 0);
 $s = $db->one('SELECT * FROM shortlists WHERE id = ?', [$id]);
 $check('shortlist created with both candidates', (int) $db->col('SELECT COUNT(*) FROM shortlist_items WHERE shortlist_id = ?', [$id]) === 2);
 $link = $svc->link($id);

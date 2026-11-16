@@ -15,28 +15,79 @@ namespace Eshcol\Ats;
 final class Access
 {
     /**
-     * What a contractor may use: "Controller::method" => what the first number in the address is
-     * (null: no number, or nothing to check).
+     * What the first number in the address is, for every signed-in page that has one (audit S2, 16 Nov 2026).
+     * 'none' = not tied to a position (clients, settings, owner-only pages). A page missing here is refused to anyone
+     * with hidden positions; tests/access-routes-test.php fails if a route is added without an entry.
      */
-    private const ALLOWED = [
-        'DashboardController::index' => null, 'AuthController::logout' => null, 'SearchController::quick' => null,
-        'SettingsController::account' => null, 'SettingsController::changePassword' => null, 'SettingsController::forgetDevices' => null,
-        'SettingsController::saveProfile' => null, 'SettingsController::changeEmail' => null,
-        'RoleController::index' => null, 'RoleController::show' => 'role',
-        'CandidateController::show' => 'candidate', 'CandidateController::why' => 'application', 'CandidateController::whatsapp' => 'candidate', 'CandidateController::note' => 'candidate', 'CandidateController::downloadCv' => 'cv',
-        'CandidateController::stage' => 'application', 'CandidateController::permission' => 'application', 'CandidateController::review' => 'application', 'CandidateController::reason' => 'application',
-        'UploadController::page' => null, 'UploadController::startBatch' => null, 'UploadController::file' => null,
-        'InterviewController::addSlots' => 'role', 'InterviewController::deleteSlot' => 'slot', 'InterviewController::invite' => 'application',
-        'InterviewController::inviteShortlisted' => 'role', 'InterviewController::book' => 'application', 'InterviewController::outcome' => 'interview',
-        'InterviewController::cancel' => 'interview', 'InterviewController::letter' => 'interview',
-        'QuestionnaireController::sendOne' => 'application', 'MessageController::send' => 'candidate',
+    public const KINDS = [
+        'ClientController::show' => 'none', 'ClientController::edit' => 'none', 'ClientController::logo' => 'none', 'ClientController::update' => 'none',
+        'ClientController::addContact' => 'none', 'ClientController::portalAccess' => 'none',
+        'RoleController::show' => 'role', 'RoleController::edit' => 'role', 'RoleController::update' => 'role', 'RoleController::rescore' => 'role',
+        'RoleController::matches' => 'role', 'RoleController::addCandidate' => 'role', 'RoleController::found' => 'role',
+        'PostingController::show' => 'role',
+        'FitController::save' => 'role', 'FitController::copy' => 'role', 'FitController::suggest' => 'role', 'FitController::queue' => 'role',
+        'FitController::step' => 'role', 'FitController::examplesFromClient' => 'role', 'FitController::examplesReassess' => 'role',
+        'FitController::example' => 'role', 'FitController::exampleNote' => 'role', 'FitController::rulesSuggest' => 'role',
+        'FitController::ruleDecide' => 'role', 'FitController::fairCheck' => 'role', 'FitController::addAll' => 'role',
+        'FitController::force' => 'application',
+        'CategoryController::testShow' => 'none', 'CategoryController::testStep' => 'none', 'CategoryController::testDelete' => 'none',
+        'CategoryController::candidateSave' => 'candidate', 'CategoryController::candidateConfirm' => 'candidate', 'CategoryController::candidateNow' => 'candidate',
+        'CandidateController::show' => 'candidate', 'CandidateController::whatsapp' => 'candidate', 'CandidateController::edit' => 'candidate',
+        'CandidateController::update' => 'candidate', 'CandidateController::note' => 'candidate', 'CandidateController::preferredCv' => 'candidate',
+        'CandidateController::unreliable' => 'candidate', 'CandidateController::addToRole' => 'candidate', 'CandidateController::destroy' => 'candidate',
+        'CandidateController::route' => 'candidate', 'CandidateController::detailsReviewed' => 'candidate', 'CandidateController::deleteView' => 'none',
+        'CandidateController::downloadCv' => 'cv', 'CandidateController::saveCvText' => 'cv',
+        'CandidateController::stage' => 'application', 'CandidateController::override' => 'application', 'CandidateController::reason' => 'application',
+        'CandidateController::review' => 'application', 'CandidateController::permission' => 'application', 'CandidateController::why' => 'application',
+        'DecisionController::feedback' => 'application', 'DecisionController::reference' => 'application',
+        'DecisionController::offer' => 'application', 'DecisionController::joining' => 'application',
+        'AiController::analyse' => 'candidate',
+        'QuestionnaireController::contact' => 'candidate', 'QuestionnaireController::removal' => 'none',
+        'QuestionnaireController::editor' => 'role', 'QuestionnaireController::save' => 'role', 'QuestionnaireController::sendRole' => 'role',
+        'QuestionnaireController::sendOne' => 'application',
+        'MessageController::send' => 'candidate',
         'ShortlistController::create' => 'role', 'ShortlistController::store' => 'role', 'ShortlistController::preview' => 'role',
         'ShortlistController::show' => 'shortlist', 'ShortlistController::pdf' => 'shortlist', 'ShortlistController::resend' => 'shortlist',
-        'ShortlistController::close' => 'shortlist', 'ShortlistController::chased' => 'shortlist', 'ShortlistController::emailPreview' => 'shortlist', 'ShortlistController::send' => 'shortlist',
-        'ShortlistController::discard' => 'shortlist', 'ShortlistController::cvPlan' => 'shortlist', 'ShortlistController::cvCover' => 'shortlist',
-        'ShortlistController::cvSource' => 'shortlist', 'ShortlistController::cvBranded' => 'shortlist', 'ShortlistController::cvRender' => 'shortlist',
-        'ShortlistController::cvView' => 'shortlist',
-        'DecisionController::feedback' => 'application', 'DecisionController::reference' => 'application',
+        'ShortlistController::close' => 'shortlist', 'ShortlistController::chased' => 'shortlist', 'ShortlistController::emailPreview' => 'shortlist',
+        'ShortlistController::send' => 'shortlist', 'ShortlistController::discard' => 'shortlist', 'ShortlistController::cvPlan' => 'shortlist',
+        'ShortlistController::cvCover' => 'shortlist', 'ShortlistController::cvSource' => 'shortlist', 'ShortlistController::cvBranded' => 'shortlist',
+        'ShortlistController::cvRender' => 'shortlist', 'ShortlistController::cvView' => 'shortlist',
+        'DocumentController::download' => 'document', 'DocumentController::delete' => 'document',
+        'InterviewController::addSlots' => 'role', 'InterviewController::inviteShortlisted' => 'role', 'InterviewController::deleteSlot' => 'slot',
+        'InterviewController::invite' => 'application', 'InterviewController::book' => 'application',
+        'InterviewController::outcome' => 'interview', 'InterviewController::cancel' => 'interview', 'InterviewController::letter' => 'interview',
+        'EmailController::show' => 'none', 'EmailController::body' => 'none', 'EmailController::release' => 'none',
+        'EmailController::cancel' => 'none', 'EmailController::retry' => 'none',
+        'NewTermsController::suggest' => 'role', 'NewTermsController::acceptForRole' => 'role',
+        'StaffingController::deleteWage' => 'none', 'StaffingController::saveTerms' => 'none',
+        'ReaderTestController::show' => 'none', 'ReaderTestController::run' => 'none', 'ReaderTestController::delete' => 'none',
+        'ReaderTestController::review' => 'none', 'ReaderTestController::saveTruth' => 'none',
+        'HealthController::clearEmail' => 'candidate', 'HealthController::exportData' => 'candidate',
+        'SettingsController::userPositions' => 'none', 'SettingsController::userActive' => 'none',
+        'JoiningController::json' => 'none', 'JoiningController::status' => 'none', 'JoiningController::refresh' => 'none',
+        'PlacementController::save' => 'none', 'PlacementController::checkin' => 'none', 'PlacementController::left' => 'none',
+    ];
+
+    /** What a contractor may use (the number in the address is checked by KINDS). */
+    private const ALLOWED = [
+        'DashboardController::index', 'AuthController::logout', 'SearchController::quick',
+        'SettingsController::account', 'SettingsController::changePassword', 'SettingsController::forgetDevices',
+        'SettingsController::saveProfile', 'SettingsController::changeEmail',
+        'RoleController::index', 'RoleController::show',
+        'CandidateController::show', 'CandidateController::why', 'CandidateController::whatsapp', 'CandidateController::note', 'CandidateController::downloadCv',
+        'CandidateController::stage', 'CandidateController::permission', 'CandidateController::review', 'CandidateController::reason',
+        'UploadController::page', 'UploadController::startBatch', 'UploadController::file',
+        'InterviewController::addSlots', 'InterviewController::deleteSlot', 'InterviewController::invite',
+        'InterviewController::inviteShortlisted', 'InterviewController::book', 'InterviewController::outcome',
+        'InterviewController::cancel', 'InterviewController::letter',
+        'QuestionnaireController::sendOne', 'MessageController::send',
+        'ShortlistController::create', 'ShortlistController::store', 'ShortlistController::preview',
+        'ShortlistController::show', 'ShortlistController::pdf', 'ShortlistController::resend',
+        'ShortlistController::close', 'ShortlistController::chased', 'ShortlistController::emailPreview', 'ShortlistController::send',
+        'ShortlistController::discard', 'ShortlistController::cvPlan', 'ShortlistController::cvCover',
+        'ShortlistController::cvSource', 'ShortlistController::cvBranded', 'ShortlistController::cvRender',
+        'ShortlistController::cvView',
+        'DecisionController::feedback', 'DecisionController::reference',
     ];
 
     /** @var array<int, list<int>> user id => role ids, for the request */
@@ -73,6 +124,7 @@ final class Access
             'interview' => $db->col('SELECT a.role_id FROM interviews i JOIN applications a ON a.id = i.application_id WHERE i.id = ?', [$id]),
             'slot' => $db->col('SELECT role_id FROM interview_slots WHERE id = ?', [$id]),
             'shortlist' => $db->col('SELECT role_id FROM shortlists WHERE id = ?', [$id]),
+            'document' => $db->col("SELECT owner_id FROM documents WHERE id = ? AND owner_type = 'role'", [$id]),
             default => null,
         };
         return $v === null || $v === false ? null : (int) $v;
@@ -97,22 +149,29 @@ final class Access
             // A recruiter and our own team's private positions (15 Nov 2026): no page about one of them, or about the
             // applications, interviews and shortlists on it. Candidates themselves stay visible (the shared database).
             $hidden = self::hiddenRoleIds($user);
-            if (!$hidden || !isset($args[0]) || !is_int($args[0])) {
+            if (!$hidden) {
                 return true;
             }
-            $ctl = strtok($key, ':');
-            $kind = self::ALLOWED[$key] ?? (in_array($ctl, ['RoleController', 'FitController', 'PostingController'], true)
-                || in_array($key, ['QuestionnaireController::editor', 'QuestionnaireController::save', 'QuestionnaireController::sendRole',
-                    'NewTermsController::suggest', 'NewTermsController::acceptForRole'], true) ? 'role' : null);
-            $kind = $kind === 'candidate' || $kind === 'cv' ? null : $kind;
-            $rid = $kind ? self::roleOf($kind, $args[0]) : null;
+            // A position chosen in a form (add to a position, upload to a position) counts too.
+            $posted = (int) ($_POST['role_id'] ?? 0);
+            if ($posted > 0 && in_array($posted, $hidden, true)) {
+                return false;
+            }
+            if (!isset($args[0]) || !is_int($args[0])) {
+                return true;
+            }
+            if (!isset(self::KINDS[$key])) {
+                return false;
+            }
+            $kind = self::KINDS[$key];
+            $rid = in_array($kind, ['none', 'candidate', 'cv'], true) ? null : self::roleOf($kind, $args[0]);
             return $rid === null || !in_array($rid, $hidden, true);
         }
-        if (!array_key_exists($key, self::ALLOWED)) {
+        if (!in_array($key, self::ALLOWED, true)) {
             return false;
         }
-        $kind = self::ALLOWED[$key];
-        return $kind === null || self::allows($user, $kind, (int) ($args[0] ?? 0));
+        $kind = self::KINDS[$key] ?? 'none';
+        return $kind === 'none' || self::allows($user, $kind, (int) ($args[0] ?? 0));
     }
 
     /** May this user see this record? Always yes for owners and recruiters. */

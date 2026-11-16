@@ -52,7 +52,8 @@ final class Shortlists
         foreach ($app->db->all('SELECT id, kind, sort FROM stages') as $st) {
             self::$stageMap[(int) $st['id']] = [(string) $st['kind'], (int) $st['sort']];
         }
-        self::$shortSort = (int) ($app->db->col("SELECT sort FROM stages WHERE kind = 'active' AND name LIKE 'Shortlist%' ORDER BY sort LIMIT 1") ?: 30);
+        $short = Stages::id($app, Stages::SHORTLISTED);
+        self::$shortSort = $short && isset(self::$stageMap[$short]) ? self::$stageMap[$short][1] : 30;
     }
 
     /** Everyone shortlisted on a position, earliest stage first (those waiting to be sent), best score first. */
@@ -229,8 +230,19 @@ final class Shortlists
         if ($s['mode'] === 'cvs' && $db->col('SELECT COUNT(*) FROM shortlist_items WHERE shortlist_id = ? AND branded_path IS NULL', [$id])) {
             return 'Some CVs are still being prepared. Wait until every CV shows "ready", then send.';
         }
-        $db->tx(function () use ($db, $id, $userId) {
-            $submitted = $db->one("SELECT id, sort FROM stages WHERE kind = 'active' AND is_active = 1 AND name LIKE 'Submitted%' ORDER BY sort LIMIT 1");
+        // Audit R1 (16 Nov 2026): build the email first; then mark sent, queue the email and move the stages together,
+        // so it is either all done or none of it. Claiming the draft in the same step stops a double-click sending twice.
+        try {
+            $content = $this->emailContent($id);
+        } catch (\Throwable $e) {
+            return 'The email could not be prepared, so nothing was sent (' . mb_strimwidth($e->getMessage(), 0, 140, '…') . '). Try again.';
+        }
+        $sent = $db->tx(function () use ($db, $id, $userId, $content) {
+            if ($db->run("UPDATE shortlists SET status = 'sent', sent_at = NOW() WHERE id = ? AND status = 'draft'", [$id])->rowCount() !== 1) {
+                return false;
+            }
+            $sid = Stages::id($this->app, Stages::SUBMITTED);
+            $submitted = $sid ? $db->one('SELECT id, sort FROM stages WHERE id = ? AND is_active = 1', [$sid]) : null;
             foreach ($db->all('SELECT application_id FROM shortlist_items WHERE shortlist_id = ?', [$id]) as $it) {
                 // Move them on to "Submitted to client", unless they're already further along.
                 $a = $db->one('SELECT a.id, a.stage_id, s.sort FROM applications a JOIN stages s ON s.id = a.stage_id WHERE a.id = ?', [$it['application_id']]);
@@ -240,9 +252,12 @@ final class Shortlists
                         'user_id' => $userId, 'note' => 'Sent to the client (' . ref_shortlist($id) . ')']);
                 }
             }
-            $db->run("UPDATE shortlists SET status = 'sent', sent_at = NOW() WHERE id = ?", [$id]);
+            $this->email($id, $userId, $content);
+            return true;
         });
-        $this->email($id, $userId);
+        if (!$sent) {
+            return 'This shortlist has already been sent.';
+        }
         Audit::log('shortlist_sent', 'role', (int) $s['role_id'], ['shortlist' => $id]);
         return null;
     }
@@ -331,11 +346,11 @@ final class Shortlists
     }
 
     /** Queues the email to the client. */
-    public function email(int $id, ?int $userId): int
+    public function email(int $id, ?int $userId, ?array $content = null): int
     {
         $db = $this->app->db;
         $s = $db->one('SELECT * FROM shortlists WHERE id = ?', [$id]);
-        [$subject, $html, $text, $attachments] = $this->emailContent($id);
+        [$subject, $html, $text, $attachments] = $content ?? $this->emailContent($id);
         $emailId = (new Mailer($this->app))->enqueue(['kind' => 'shortlist', 'to_email' => $s['to_email'], 'to_name' => $s['to_name'],
             'subject' => $subject, 'html' => $html, 'text' => $text, 'meta' => ['shortlist' => $id, 'cc' => $s['cc'], 'attachments' => $attachments],
             'priority' => 20, 'created_by' => $userId]);

@@ -81,8 +81,9 @@ final class InterviewController extends Controller
     {
         $iv = $this->db->one('SELECT i.*, a.candidate_id FROM interviews i JOIN applications a ON a.id = i.application_id WHERE i.id = ?', [$id]);
         $iv || Http::abort(404);
-        (new Interviews($this->app))->outcome($id, (string) ($_POST['outcome'] ?? ''), trim((string) ($_POST['feedback'] ?? '')), (int) Auth::user()['id']);
-        Http::flash('ok', 'Saved: ' . (Interviews::OUTCOMES[$_POST['outcome'] ?? ''] ?? 'outcome') . '.');
+        $u = Auth::user();
+        $note = (new Interviews($this->app))->outcome($id, (string) ($_POST['outcome'] ?? ''), trim((string) ($_POST['feedback'] ?? '')), (int) $u['id'], ($u['role'] ?? '') === 'owner');
+        $note ? Http::flash('error', $note) : Http::flash('ok', 'Saved: ' . (Interviews::OUTCOMES[$_POST['outcome'] ?? ''] ?? 'outcome') . '.');
         Http::redirect($this->back("/candidates/{$iv['candidate_id']}#interviews"));
     }
 

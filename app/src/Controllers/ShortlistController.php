@@ -19,7 +19,7 @@ final class ShortlistController extends Controller
     {
         $role = $this->role($roleId);
         $apps = $this->db->all("
-            SELECT a.id, a.candidate_id, COALESCE(a.override_score, a.score) AS eff_score, s.name AS stage, s.sort AS stage_sort,
+            SELECT a.id, a.candidate_id, a.stage_id, COALESCE(a.override_score, a.score) AS eff_score, s.name AS stage, s.sort AS stage_sort,
                    c.full_name, c.current_title, c.location, c.exp_months, c.exp_as_of, c.do_not_contact,
                    (SELECT i.decision FROM shortlist_items i WHERE i.application_id = a.id ORDER BY i.id DESC LIMIT 1) AS last_decision,
                    (SELECT COUNT(*) FROM shortlist_items i WHERE i.application_id = a.id) AS sent_before
@@ -29,7 +29,7 @@ final class ShortlistController extends Controller
         $svc = new Shortlists($this->app);
         foreach ($apps as &$a) {
             $a['summary'] = $svc->autoRemark((int) $a['id']);
-            $a['preselect'] = $a['stage'] === 'Shortlisted' && !$a['sent_before'];
+            $a['preselect'] = \Eshcol\Ats\Services\Stages::is($this->app, (int) $a['stage_id'], \Eshcol\Ats\Services\Stages::SHORTLISTED) && !$a['sent_before'];
         }
         $contact = $this->db->one('SELECT name, email FROM client_contacts WHERE client_id = ? AND email IS NOT NULL ORDER BY id LIMIT 1', [$role['client_id']]) ?: ['name' => '', 'email' => ''];
         $this->view('shortlist/create', ['title' => 'Send a shortlist · ' . $role['title'], 'role' => $role, 'apps' => $apps, 'contact' => $contact, 'error' => null, 'old' => []]);

@@ -45,7 +45,7 @@ final class RoleController extends Controller
             SELECT r.*, c.name AS client, c.is_self, u.name AS owner,
                    COUNT(a.id) AS cvs, SUM(a.score >= r.score_threshold) AS above,
                    SUM(" . \Eshcol\Ats\Services\Shortlists::shortlistedSql($this->app, 'st') . ") AS shortlisted,
-                   SUM(st.name = 'Shortlisted' AND NOT EXISTS (SELECT 1 FROM shortlist_items i JOIN shortlists sl ON sl.id = i.shortlist_id
+                   SUM(" . \Eshcol\Ats\Services\Stages::sqlIs($this->app, 'st.id', \Eshcol\Ats\Services\Stages::SHORTLISTED) . " AND NOT EXISTS (SELECT 1 FROM shortlist_items i JOIN shortlists sl ON sl.id = i.shortlist_id
                        WHERE i.application_id = a.id AND sl.status <> 'draft')) AS ready
             FROM roles r JOIN clients c ON c.id = r.client_id
             LEFT JOIN users u ON u.id = r.owner_user_id
@@ -97,9 +97,10 @@ final class RoleController extends Controller
         // and "Client interview" reads "Interview".
         if (\Eshcol\Ats\Services\Engagement::of($role) === 'inhouse') {
             $inUse = array_map('intval', array_column($this->db->all('SELECT DISTINCT stage_id FROM applications WHERE role_id = ?', [$id]), 'stage_id'));
-            $stages = array_values(array_filter($stages, fn ($s) => $s['name'] !== 'Submitted to client' || in_array((int) $s['id'], $inUse, true)));
+            $S = \Eshcol\Ats\Services\Stages::class;
+            $stages = array_values(array_filter($stages, fn ($s) => !$S::is($this->app, (int) $s['id'], $S::SUBMITTED) || in_array((int) $s['id'], $inUse, true)));
             foreach ($stages as &$st) {
-                $st['name'] = $st['name'] === 'Client interview' ? 'Interview' : $st['name'];
+                $st['name'] = $S::is($this->app, (int) $st['id'], $S::INTERVIEW) && $st['name'] === 'Client interview' ? 'Interview' : $st['name'];
             }
             unset($st);
         }

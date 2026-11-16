@@ -35,6 +35,9 @@ final class Placements
     /** The "Offer made" stage: the last active stage before the first success stage. */
     public function offerStageId(): ?int
     {
+        if ($id = Stages::id($this->app, Stages::OFFER)) {
+            return $id;
+        }
         $db = $this->app->db;
         $success = $db->col("SELECT MIN(sort) FROM stages WHERE kind = 'success'");
         $id = $success !== null ? $db->col("SELECT id FROM stages WHERE kind = 'active' AND sort < ? ORDER BY sort DESC LIMIT 1", [$success]) : null;

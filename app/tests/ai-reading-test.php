@@ -192,6 +192,20 @@ try {
 $check('Claude busy: the CV waits for the next run', str_starts_with($err, 'busy:') && $db->col('SELECT status FROM cv_ai_reads WHERE id = ?', [$readId]) === 'pending');
 (new AiReading($app, $fake([$msg([], 'refusal')])))->processNext();
 $check('a CV Claude declines is listed as failed', $db->col('SELECT status FROM cv_ai_reads WHERE id = ?', [$readId]) === 'failed');
+echo "\nAudit C1: two CVs before the reader runs\n";
+$db->run("DELETE FROM cv_ai_reads WHERE status = 'pending' AND candidate_id <> ?", [$cid]);
+$f1 = $db->one('SELECT * FROM cv_files WHERE id = ?', [$fid]);
+$fid2 = $db->insert('cv_files', ['candidate_id' => $cid, 'sha256' => hash('sha256', "c1-$tag"), 'original_name' => 'newer.pdf', 'ext' => $f1['ext'],
+    'size_bytes' => $f1['size_bytes'], 'storage_path' => $f1['storage_path'], 'text' => $f1['text'], 'text_status' => 'ok']);
+$db->run("UPDATE cv_ai_reads SET status = 'pending', mode = 'auto', applied_at = NULL, error = NULL WHERE id = ?", [$readId]);
+$newRead = $db->insert('cv_ai_reads', ['cv_file_id' => $fid2, 'candidate_id' => $cid, 'mode' => 'auto', 'status' => 'pending']);
+$ai3 = new AiReading($app, $fake([$reply()], $h3));
+$ai3->processNext();
+$old = $db->one('SELECT status, error FROM cv_ai_reads WHERE id = ?', [$readId]);
+$check('the older CV is skipped without a call to Claude (no second charge)', $old['status'] === 'failed' && str_contains((string) $old['error'], 'newer CV') && count($h3) === 0);
+$ai3->processNext();
+$check('the newer CV is read, and the reading is filed against it', $db->col('SELECT status FROM cv_ai_reads WHERE id = ?', [$newRead]) === 'done' && count($h3) === 1);
+$db->run('UPDATE cv_ai_reads SET status = ? WHERE id = ?', ['done', $readId]);
 $check('the five-minute job does nothing without a key', (new AiReading($app))->runBatch() === '' || \Eshcol\Ats\Secrets::has($app, 'anthropic_api_key'));
 $check('a deleted candidate takes their readings with them', (function () use ($app, $db, $scid) {
     (new Retention($app))->delete($scid, 'manual', false);

@@ -463,7 +463,8 @@ final class Questionnaires
     public function decline(array $q): void
     {
         $db = $this->app->db;
-        $withdrew = $db->one("SELECT id FROM stages WHERE kind = 'fail' AND is_active = 1 AND name LIKE 'Withdr%' ORDER BY sort LIMIT 1");
+        $wid = Stages::id($this->app, Stages::WITHDREW);
+        $withdrew = $wid ? $db->one("SELECT id FROM stages WHERE id = ? AND is_active = 1", [$wid]) : null;
         $db->tx(function () use ($db, $q, $withdrew) {
             $this->setStatus((int) $q['id'], 'declined', true, ['declined_at' => date('Y-m-d H:i:s')]);
             foreach ($this->group((int) $q['id']) as $g) {

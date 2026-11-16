@@ -48,7 +48,8 @@ final class CvReader
      * @return array{fields: array<string, mixed>, raw: array, model: string, tokens_in: int, tokens_out: int, cost_usd: float, ms: int, cv_file_id: int, cv_text: ?string}
      * @throws \RuntimeException with a message for the user
      */
-    public function read(int $candidateId, string $reader, bool $transcribe = false): array
+    /** $fileId: the CV the reading was queued for (audit C1, 16 Nov 2026); null reads their newest. */
+    public function read(int $candidateId, string $reader, bool $transcribe = false, ?int $fileId = null): array
     {
         if (!isset(self::MODELS[$reader])) {
             throw new \RuntimeException('Unknown reader.');
@@ -65,7 +66,9 @@ final class CvReader
         if (!$this->client && !self::available($this->app)) {
             throw new \RuntimeException('stop:No Claude API key. Add it in Settings › AI analysis.');
         }
-        $file = $db->one('SELECT id, text, ext, storage_path FROM cv_files WHERE candidate_id = ? ORDER BY id DESC LIMIT 1', [$candidateId]);
+        $file = $fileId
+            ? $db->one('SELECT id, text, ext, storage_path FROM cv_files WHERE id = ? AND candidate_id = ?', [$fileId, $candidateId])
+            : $db->one('SELECT id, text, ext, storage_path FROM cv_files WHERE candidate_id = ? ORDER BY id DESC LIMIT 1', [$candidateId]);
         if (!$file) {
             throw new \RuntimeException('No CV on file.');
         }

@@ -263,14 +263,14 @@ final class Staffing
     {
         return (int) $this->app->db->col("SELECT COUNT(DISTINCT a.candidate_id) FROM offer_approvals o JOIN applications a ON a.id = o.application_id
             JOIN roles r ON r.id = a.role_id JOIN stages s ON s.id = a.stage_id
-            WHERE r.engagement = 'staffing' AND o.approved_at IS NOT NULL AND s.name <> 'Joined' AND s.kind NOT IN ('fail', 'hold') AND a.id <> ?", [(int) $exceptApp]);
+            WHERE r.engagement = 'staffing' AND o.approved_at IS NOT NULL AND NOT " . Stages::sqlIs($this->app, 's.id', Stages::JOINED) . " AND s.kind NOT IN ('fail', 'hold') AND a.id <> ?", [(int) $exceptApp]);
     }
 
     /** People deputed now: on a staffing position and at "Joined". */
     public function headcount(): int
     {
         return (int) $this->app->db->col("SELECT COUNT(DISTINCT a.candidate_id) FROM applications a JOIN roles r ON r.id = a.role_id JOIN stages s ON s.id = a.stage_id
-            WHERE r.engagement = 'staffing' AND s.name = 'Joined'");
+            WHERE r.engagement = 'staffing' AND " . Stages::sqlIs($this->app, 's.id', Stages::JOINED));
     }
 
     /** Is the contract labour licence on file and in date? */
@@ -348,7 +348,7 @@ final class Staffing
         if ($calc && $calc['margin_pct'] < $this->minMarginPct() && trim((string) $marginReason) === '') {
             $problems[] = 'The margin is ' . $calc['margin_pct'] . ' % of the bill, below your minimum of ' . rtrim(rtrim(number_format($this->minMarginPct(), 2), '0'), '.') . ' %: give a reason to go ahead.';
         }
-        $already = (int) $db->col("SELECT 1 FROM applications a JOIN stages s ON s.id = a.stage_id WHERE a.id = ? AND s.name = 'Joined'", [$appId]);
+        $already = (int) $db->col('SELECT 1 FROM applications a WHERE a.id = ? AND ' . Stages::sqlIs($this->app, 'a.stage_id', Stages::JOINED), [$appId]);
         // Counted: people deputed, and those with an approved offer who are about to join (plan v2, 4.3).
         if ($this->headcount() + $this->aboutToJoin($appId) + ($already ? 0 : 1) >= self::LICENCE_AT && !$this->licence()) {
             $problems[] = 'With the people deputed and those about to join, this would make ' . self::LICENCE_AT . ' or more: enter the contract labour licence (Settings › Staffing) first.';

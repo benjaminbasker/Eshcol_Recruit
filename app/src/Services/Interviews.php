@@ -150,20 +150,31 @@ final class Interviews
     /** The candidate picks a slot from their link. Returns [ok, message]. */
     public function pick(array $iv, int $slotId): array
     {
+        // Audit R2 (16 Nov 2026): one booking at a time per interview, all in one step (the slot, the interview, the emails),
+        // so two clicks at once can't take two times, and a failure leaves no time taken.
         $db = $this->app->db;
-        if ($iv['status'] !== 'choosing') {
-            return [false, 'This interview is already arranged.'];
-        }
         $a = $this->application((int) $iv['application_id']);
-        $ok = $db->run("UPDATE interview_slots SET interview_id = ? WHERE id = ? AND role_id = ? AND round = ? AND interview_id IS NULL AND starts_at > NOW()",
-            [$iv['id'], $slotId, $a['role_id'], $iv['round']])->rowCount();
-        if (!$ok) {
-            return [false, 'Sorry, someone has just taken that time. Please choose another.'];
-        }
-        $slot = $db->one('SELECT * FROM interview_slots WHERE id = ?', [$slotId]);
-        $db->run("UPDATE interviews SET status = 'booked', starts_at = ?, duration_min = ?, kind = ? WHERE id = ?", [$slot['starts_at'], $slot['duration_min'], $slot['kind'], $iv['id']]);
-        $this->confirmed((int) $iv['id'], (int) $iv['created_by']);
-        return [true, 'Booked.'];
+        return $db->tx(function () use ($db, $iv, $slotId, $a) {
+            if ($db->col('SELECT status FROM interviews WHERE id = ? FOR UPDATE', [$iv['id']]) !== 'choosing') {
+                return [false, 'This interview is already arranged.'];
+            }
+            $ok = $db->run("UPDATE interview_slots SET interview_id = ? WHERE id = ? AND role_id = ? AND round = ? AND interview_id IS NULL AND starts_at > NOW()",
+                [$iv['id'], $slotId, $a['role_id'], $iv['round']])->rowCount();
+            if (!$ok) {
+                return [false, 'Sorry, someone has just taken that time. Please choose another.'];
+            }
+            $slot = $db->one('SELECT * FROM interview_slots WHERE id = ?', [$slotId]);
+            // Audit C5: the meeting details follow the kind of time chosen, not the first time offered.
+            $c = $db->one('SELECT meeting_link, interview_address, maps_url FROM clients WHERE id = ?', [$a['client_id']]) ?: [];
+            $db->run("UPDATE interviews SET status = 'booked', starts_at = ?, duration_min = ?, kind = ?, meeting_link = ?, address = ?, maps_url = ? WHERE id = ?", [
+                $slot['starts_at'], $slot['duration_min'], $slot['kind'],
+                $slot['kind'] === 'virtual' ? ($iv['meeting_link'] ?: ($c['meeting_link'] ?? null) ?: null) : null,
+                $slot['kind'] === 'in_person' ? ($iv['address'] ?: ($c['interview_address'] ?? null) ?: null) : null,
+                $slot['kind'] === 'in_person' ? ($iv['maps_url'] ?: ($c['maps_url'] ?? null) ?: null) : null,
+                $iv['id']]);
+            $this->confirmed((int) $iv['id'], (int) $iv['created_by']);
+            return [true, 'Booked.'];
+        });
     }
 
     /** The candidate says none of the times work: tell whoever sent the link. */
@@ -203,7 +214,8 @@ final class Interviews
                 $cbody, $u, ['interview' => $id], [['ics' => $this->ics($iv, $a, true), 'name' => 'Interview.ics']], 12, $userId);
         }
         // Move the candidate to "Client interview" unless already further along.
-        $stage = $db->one("SELECT id, sort FROM stages WHERE kind = 'active' AND is_active = 1 AND name LIKE '%interview%' ORDER BY sort LIMIT 1");
+        $sid = Stages::id($this->app, Stages::INTERVIEW);
+        $stage = $sid ? $db->one('SELECT id, sort FROM stages WHERE id = ? AND is_active = 1', [$sid]) : null;
         $cur = $db->one('SELECT a.stage_id, s.sort FROM applications a JOIN stages s ON s.id = a.stage_id WHERE a.id = ?', [$a['id']]);
         if ($stage && $cur && (int) $cur['sort'] < (int) $stage['sort']) {
             $db->update('applications', ['stage_id' => $stage['id']], (int) $a['id']);
@@ -392,29 +404,43 @@ final class Interviews
     }
 
     /** Records how a round went. Selected → "Offer made"; not selected → "Not suitable". */
-    public function outcome(int $id, string $outcome, string $feedback, int $userId): void
+    /**
+     * Returns a note for the person recording it when the stage could not move (e.g. the offer still needs approval),
+     * else null. The stage moves through StageMover, so approvals, the joining record and the placement all apply.
+     */
+    public function outcome(int $id, string $outcome, string $feedback, int $userId, bool $byOwner = false): ?string
     {
         $db = $this->app->db;
         if (!isset(self::OUTCOMES[$outcome])) {
-            return;
+            return null;
         }
         $iv = $db->one('SELECT * FROM interviews WHERE id = ?', [$id]);
         if (!$iv) {
-            return;
+            return null;
         }
         $db->run("UPDATE interviews SET status = ?, outcome = ?, feedback = ? WHERE id = ?", [$outcome === 'no_show' ? 'no_show' : 'done', $outcome, mb_substr($feedback, 0, 4000) ?: null, $id]);
-        $target = match ($outcome) {
-            'selected' => $db->one("SELECT id FROM stages WHERE is_active = 1 AND name LIKE 'Offer%' ORDER BY sort LIMIT 1"),
-            'not_selected' => $db->one("SELECT id FROM stages WHERE is_active = 1 AND kind = 'fail' AND name LIKE 'Not suitable%' LIMIT 1"),
-            'no_show' => $db->one("SELECT id FROM stages WHERE is_active = 1 AND kind = 'fail' AND name LIKE 'Withdr%' LIMIT 1")
-                ?: $db->one("SELECT id FROM stages WHERE is_active = 1 AND kind = 'fail' ORDER BY sort DESC LIMIT 1"),
+        $code = match ($outcome) {
+            'selected' => Stages::OFFER,
+            'not_selected' => Stages::NOT_SUITABLE,
+            'no_show' => Stages::WITHDREW,
             default => null,
         };
-        $cur = (int) $db->col('SELECT stage_id FROM applications WHERE id = ?', [$iv['application_id']]);
-        if ($target && (int) $target['id'] !== $cur) {
-            $db->update('applications', ['stage_id' => $target['id']], (int) $iv['application_id']);
-            $db->insert('stage_history', ['application_id' => $iv['application_id'], 'from_stage_id' => $cur, 'to_stage_id' => $target['id'], 'user_id' => $userId,
-                'note' => 'Round ' . $iv['round'] . ': ' . self::OUTCOMES[$outcome]]);
+        $target = $code ? Stages::id($this->app, $code) : null;
+        if ($target && !$db->col('SELECT is_active FROM stages WHERE id = ?', [$target])) {
+            $target = null;
+        }
+        if (!$target && $outcome === 'no_show') {
+            $target = (int) $db->col("SELECT id FROM stages WHERE is_active = 1 AND kind = 'fail' ORDER BY sort DESC LIMIT 1") ?: null;
+        }
+        $a = $db->one('SELECT * FROM applications WHERE id = ?', [$iv['application_id']]);
+        $note = null;
+        if ($target && $a && $target !== (int) $a['stage_id']) {
+            $mover = new StageMover($this->app);
+            if ($why = $mover->blocked((int) $a['id'], $target)) {
+                $note = 'Recorded, but the stage was not changed: ' . $why;
+            } else {
+                $mover->move($a, $target, 'Round ' . $iv['round'] . ': ' . self::OUTCOMES[$outcome], $userId, $byOwner);
+            }
         }
         if ($outcome === 'no_show') {
             $a = $this->application((int) $iv['application_id']);
@@ -422,6 +448,7 @@ final class Interviews
             (new Reliability($this->app))->mark((int) $a['candidate_id'], 'no_show', 'Round ' . $iv['round'] . ', ' . $a['title'] . ' (' . $a['client_name'] . '), ' . $when, $userId);
         }
         Audit::log('interview_outcome', 'interview', $id, ['outcome' => $outcome]);
+        return $note;
     }
 
     public function cancel(int $id, int $userId): void

@@ -165,4 +165,20 @@ $civ = $db->one("SELECT * FROM interviews WHERE application_id = ? AND status = 
 $svc->noneWork($civ, 'Any weekday after 4 pm');
 $check('"none of these times work" tells you, and is noted on the candidate', (bool) $db->col('SELECT 1 FROM email_queue WHERE id > ? AND subject LIKE ?', [$maxEmail, 'Chitra Busy can%'])
     && (bool) $db->col("SELECT 1 FROM notes WHERE entity_type = 'candidate' AND entity_id = ? AND body LIKE '%after 4 pm%'", [$c3]));
+
+echo "\nAudit R2 + C5 (16 Nov 2026)\n";
+$t4 = date('Y-m-d 11:00', strtotime('+3 days'));
+$svc->addSlots($role, 1, 'in_person', [$t4], 30, 'client');
+$slotIn = (int) $db->col('SELECT id FROM interview_slots WHERE role_id = ? AND starts_at = ?', [$role, "$t4:00"]);
+$slot2 = (int) $db->col('SELECT id FROM interview_slots WHERE role_id = ? AND starts_at = ?', [$role, "$t2:00"]);
+$stale = $civ; // both tabs opened while still "choosing"
+[$okA] = $svc->pick($stale, $slotIn);
+[$okB, $msgB2] = $svc->pick($stale, $slot2);
+$check('two tabs pick two times: only the first is booked ("' . $msgB2 . '"), the other time stays free', $okA && !$okB
+    && (int) $db->col('SELECT COUNT(*) FROM interview_slots WHERE interview_id = ?', [$civ['id']]) === 1
+    && (int) $db->col('SELECT COUNT(*) FROM interview_slots WHERE id = ? AND interview_id IS NULL', [$slot2]) === 1);
+$booked = $db->one('SELECT * FROM interviews WHERE id = ?', [$civ['id']]);
+$check('invited with a video time first, chose in person: the address is filled and the meeting link cleared', $booked['kind'] === 'in_person'
+    && str_contains((string) $booked['address'], 'Balewadi') && $booked['meeting_link'] === null && $booked['maps_url'] === 'https://maps.app.goo.gl/test');
+$check('one call letter for that booking', (int) $db->col("SELECT COUNT(*) FROM email_queue WHERE id > ? AND to_email = (SELECT email FROM candidates WHERE id = ?) AND subject LIKE 'Interview confirmed:%'", [$maxEmail, $c3]) === 1);
 exit(0);

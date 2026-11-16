@@ -135,6 +135,26 @@ $check('they still see client and staffing positions', Access::allowsRoute($R, R
 $check('the candidate stays visible (the shared database)', Access::allowsRoute($R, 'Eshcol\\Ats\\Controllers\\CandidateController', 'show', [$cid]));
 $check('the hiring manager can open it, and it is in their lists', Access::allowsRoute($H, RoleController::class, 'show', [$own]) && !preg_match('/\b' . $own . '\b/', Access::roleFilter($H, 'r.id')));
 $check('the owner always can', Access::allowsRoute($O, RoleController::class, 'show', [$own]) && Access::roleFilter($O, 'r.id') === '1=1');
+// Audit S2 (16 Nov 2026): the buttons that used to slip through.
+$C = 'Eshcol\\Ats\\Controllers\\';
+$check('nor override, offer, joining or "assess anyway" on its applications', !Access::allowsRoute($R, $C . 'CandidateController', 'override', [$appOf($own)])
+    && !Access::allowsRoute($R, $C . 'DecisionController', 'offer', [$appOf($own)]) && !Access::allowsRoute($R, $C . 'DecisionController', 'joining', [$appOf($own)])
+    && !Access::allowsRoute($R, $C . 'FitController', 'force', [$appOf($own)]));
+$check('"assess anyway" reads the number as an application, so a client position\'s application is fine', Access::allowsRoute($R, $C . 'FitController', 'force', [$appOf($place)]));
+$_POST['role_id'] = $own;
+$check('a form that names the private position is refused', !Access::allowsRoute($R, $C . 'CandidateController', 'addToRole', [$cid]) && !Access::allowsRoute($R, $C . 'UploadController', 'startBatch', []));
+$check('...but the hiring manager may use it', Access::allowsRoute($H, $C . 'CandidateController', 'addToRole', [$cid]));
+$_POST = [];
+// Audit S4: the Candidates list's positions column leaves out the private position for that recruiter.
+$_SESSION['uid'] = $rec;
+$kfRec = (new \Eshcol\Ats\Services\KeyFacts($app))->forCandidates([$cid]);
+$_SESSION['uid'] = $owner;
+$kfOwn = (new \Eshcol\Ats\Services\KeyFacts($app))->forCandidates([$cid]);
+unset($_SESSION['uid']);
+$hasOwn = fn ($kf) => in_array($own, array_map('intval', array_column($kf[$cid]['positions'] ?? [], 'role_id')), true);
+$check('candidate list: the recruiter does not see the private position; the owner does', !$hasOwn($kfRec) && $hasOwn($kfOwn));
+$check('a page missing from the list is refused when positions are hidden', !Access::allowsRoute($R, $C . 'MadeUpController', 'thing', [$appOf($place)]));
+$check('...and allowed for the owner', Access::allowsRoute($O, $C . 'MadeUpController', 'thing', [$appOf($place)]));
 
 echo "\nOffers Eshcol makes need approval\n";
 $offerStage = (int) $db->col("SELECT id FROM stages WHERE name = 'Offer made'");
@@ -143,6 +163,24 @@ $check('staffing: blocked too', DecisionController::offerBlocked($app, $appOf($s
 $check('client recruitment: never blocked (the client makes the offer)', DecisionController::offerBlocked($app, $appOf($place), $offerStage) === null);
 $db->insert('offer_approvals', ['application_id' => $appOf($own), 'designation' => 'Recruiter', 'ctc_lpa' => 3.6, 'joining_date' => date('Y-m-d', strtotime('+20 days')), 'approved_by' => $owner, 'approved_at' => date('Y-m-d H:i:s')]);
 $check('approved: the move is allowed', DecisionController::offerBlocked($app, $appOf($own), $offerStage) === null);
+// Audit S3 (16 Nov 2026): an interview marked Selected goes through the same approval.
+$ivStaff = $db->insert('interviews', ['application_id' => $appOf($staff), 'round' => 1, 'status' => 'booked']);
+$stageBefore = (int) $db->col('SELECT stage_id FROM applications WHERE id = ?', [$appOf($staff)]);
+$note = $iv->outcome($ivStaff, 'selected', '', $owner, true);
+$check('interview "Selected" on staffing without an approved offer: recorded, stage not moved, and it says why',
+    $note !== null && str_contains($note, 'approval') && (int) $db->col('SELECT stage_id FROM applications WHERE id = ?', [$appOf($staff)]) === $stageBefore
+    && $db->col('SELECT outcome FROM interviews WHERE id = ?', [$ivStaff]) === 'selected');
+$ivPlace = $db->insert('interviews', ['application_id' => $appOf($place), 'round' => 1, 'status' => 'booked']);
+$check('client recruitment: "Selected" moves to Offer made and opens the placement', $iv->outcome($ivPlace, 'selected', '', $owner, true) === null
+    && (int) $db->col('SELECT stage_id FROM applications WHERE id = ?', [$appOf($place)]) === $offerStage
+    && (bool) $db->col('SELECT 1 FROM placements WHERE application_id = ?', [$appOf($place)]));
+// Audit Q1: renaming the stage in Settings keeps the rule.
+$db->run("UPDATE stages SET name = 'Offer issued' WHERE id = ?", [$offerStage]);
+\Eshcol\Ats\Services\Stages::forget();
+$check('renamed "Offer made" to "Offer issued": still needs approval', DecisionController::offerBlocked($app, $appOf($staff), $offerStage) !== null);
+$db->run("UPDATE stages SET name = 'Offer made' WHERE id = ?", [$offerStage]);
+$db->run('DELETE FROM placements WHERE application_id = ?', [$appOf($place)]);
+$db->run('DELETE FROM interviews WHERE id IN (?, ?)', [$ivStaff, $ivPlace]);
 $check('other stages are never blocked', DecisionController::offerBlocked($app, $appOf($staff), (int) $db->col("SELECT id FROM stages WHERE name IN ('Under review', 'Screening') ORDER BY name = 'Under review' DESC LIMIT 1")) === null);
 
 echo "\nThe staffing answer is kept on the candidate\n";

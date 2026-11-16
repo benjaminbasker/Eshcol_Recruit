@@ -636,33 +636,11 @@ final class CandidateController extends Controller
      */
     private function moveStage(array $a, int $to, ?string $note): void
     {
-        $appId = (int) $a['id'];
-        if ($to !== (int) $a['stage_id']) {
-            $closing = (bool) $this->db->col("SELECT kind IN ('fail','hold') FROM stages WHERE id = ?", [$to]);
-            // Analyser 5b: a reason for taking forward someone Claude called Weak is kept as well (16 Nov 2026; only while
-            // the extra analysers are switched on, see Agreement::extrasOn).
-            $weakForward = !$closing && \Eshcol\Ats\Services\Agreement::extrasOn($this->app)
-                && \Eshcol\Ats\Services\Agreement::isForward($this->app, $to) && \Eshcol\Ats\Services\Agreement::claudeWeak($this->app, $appId);
-            $kept = \Eshcol\Ats\Services\Agreement::keptReason($closing, $weakForward, \Eshcol\Ats\Services\Agreement::isForward($this->app, (int) $a['stage_id']), $note, $a['stage_reason'] ?? null);
-            $this->db->update('applications', ['stage_id' => $to, 'stage_reason' => $kept,
-                'stage_reason_at' => $kept === null ? null : ($kept === ($a['stage_reason'] ?? null) ? ($a['stage_reason_at'] ?? date('Y-m-d H:i:s')) : date('Y-m-d H:i:s'))], $appId);
-            $this->db->insert('stage_history', ['application_id' => $appId, 'from_stage_id' => $a['stage_id'], 'to_stage_id' => $to, 'user_id' => Auth::user()['id'], 'note' => $note]);
-            Audit::log('stage_changed', 'candidate', (int) $a['candidate_id'], ['role' => $a['role_id'], 'to' => $to]);
-            if (!(new \Eshcol\Ats\Services\Migrator($this->app))->pending()) {
-                // Our own team and staffing (phase 3, 15 Nov 2026): "Joined" writes the joining record for the HRMS; leaving it withdraws it.
-                $toName = (string) $this->db->col('SELECT name FROM stages WHERE id = ?', [$to]);
-                if ($toName === 'Joined' && (new \Eshcol\Ats\Services\Joinings($this->app))->record($appId, (int) Auth::user()['id'])) {
-                    Http::flash('ok', 'Joined. Their joining record is ready for the HRMS (under Joinings).');
-                } elseif ($toName !== 'Joined') {
-                    $this->db->run("UPDATE joinings SET status = 'withdrawn' WHERE application_id = ? AND status IN ('ready', 'downloaded')", [$appId]);
-                }
-                $pid = (new \Eshcol\Ats\Services\Placements($this->app))->afterStage($appId, $to); // Offer made / Joined (B9)
-                if ($pid && (Auth::user()['role'] ?? '') === 'owner' && in_array((string) $this->db->col('SELECT status FROM placements WHERE id = ?', [$pid]), ['offer', 'joined'], true)) {
-                    Http::flash('ok', 'Add the offer and joining details in the Placement box under this position.');
-                }
-            }
+        $u = Auth::user();
+        foreach ((new \Eshcol\Ats\Services\StageMover($this->app))->move($a, $to, $note, (int) $u['id'], ($u['role'] ?? '') === 'owner') as $msg) {
+            Http::flash('ok', $msg);
         }
-        (new \Eshcol\Ats\Services\Questionnaires($this->app))->markReviewed($appId, (int) $a['candidate_id'], (int) Auth::user()['id']);
+        (new \Eshcol\Ats\Services\Questionnaires($this->app))->markReviewed((int) $a['id'], (int) $a['candidate_id'], (int) $u['id']);
     }
 
     /**
@@ -692,7 +670,8 @@ final class CandidateController extends Controller
             $msg = "$name approved" . ($to !== (int) $a['stage_id'] ? ' and moved to ' . $this->db->col('SELECT name FROM stages WHERE id = ?', [$to]) : '') . '.';
         } elseif ($decision === 'future' || $decision === 'unsuitable') {
             $kind = $decision === 'future' ? 'hold' : 'fail';
-            $to = (int) $this->db->col("SELECT id FROM stages WHERE kind = ? AND is_active = 1 ORDER BY " . ($kind === 'fail' ? "name LIKE 'Not suit%' DESC, " : '') . 'sort LIMIT 1', [$kind]);
+            $prefer = \Eshcol\Ats\Services\Stages::id($this->app, $kind === 'fail' ? \Eshcol\Ats\Services\Stages::NOT_SUITABLE : \Eshcol\Ats\Services\Stages::FUTURE) ?? 0;
+            $to = (int) $this->db->col('SELECT id FROM stages WHERE kind = ? AND is_active = 1 ORDER BY id = ? DESC, sort LIMIT 1', [$kind, $prefer]);
             if (!$to) {
                 Http::flash('error', 'There is no ' . ($decision === 'future' ? 'Future requirement' : 'Not suitable') . ' stage. Add it in Settings › Stages.');
                 Http::redirect($back);
@@ -762,7 +741,7 @@ final class CandidateController extends Controller
             Http::abort(422, 'Unknown stage.');
         }
         // Our own team and staffing: Eshcol makes the offer, so "Offer made" needs the owner's approval first (15 Nov 2026).
-        if ($why = DecisionController::offerBlocked($this->app, $appId, $to) ?? DecisionController::joinBlocked($this->app, $appId, $to)) {
+        if ($why = (new \Eshcol\Ats\Services\StageMover($this->app))->blocked($appId, $to)) {
             if (($_POST['ajax'] ?? '') === '1') {
                 Http::json(['ok' => false, 'error' => $why], 409);
             }

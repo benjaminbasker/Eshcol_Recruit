@@ -129,12 +129,26 @@ final class AiReading
             $db->run("UPDATE cv_ai_reads SET status = 'pending' WHERE id = ?", [$id]);
             throw new \RuntimeException('stop:This month\'s limit of ' . $this->limit() . ' CV readings is reached. Raise it in Settings › AI reading.');
         }
-        $file = $db->one('SELECT * FROM cv_files WHERE id = ?', [$row['cv_file_id']]);
-        $letters = $file ? preg_match_all('/\p{L}/u', (string) $file['text']) : 0;
-        $transcribe = $file && in_array($file['ext'], ['pdf', 'jpg', 'jpeg', 'png'], true) && ($file['text_status'] !== 'ok' || $letters < 200);
+        // Audit C1 (16 Nov 2026): read exactly the CV this job was queued for. When a newer CV of theirs is already
+        // read or waiting to be read, this older one is skipped: no second charge, and it can't overwrite newer details.
+        $newer = $row['cv_file_id'] ? $db->col("SELECT 1 FROM cv_ai_reads WHERE candidate_id = ? AND cv_file_id > ? AND status IN ('pending', 'reading', 'done') LIMIT 1",
+            [$row['candidate_id'], $row['cv_file_id']]) : false;
+        if ($newer) {
+            $db->update('cv_ai_reads', ['status' => 'failed', 'error' => 'Not read: a newer CV from them is read instead.', 'updated_at' => date('Y-m-d H:i:s')], $id);
+            return $id;
+        }
+        $file = $row['cv_file_id']
+            ? $db->one('SELECT * FROM cv_files WHERE id = ? AND candidate_id = ?', [$row['cv_file_id'], $row['candidate_id']])
+            : $db->one('SELECT * FROM cv_files WHERE candidate_id = ? ORDER BY id DESC LIMIT 1', [$row['candidate_id']]);
+        if (!$file) {
+            $db->update('cv_ai_reads', ['status' => 'failed', 'error' => 'That CV file is no longer on record.', 'updated_at' => date('Y-m-d H:i:s')], $id);
+            return $id;
+        }
+        $letters = preg_match_all('/\p{L}/u', (string) $file['text']);
+        $transcribe = in_array($file['ext'], ['pdf', 'jpg', 'jpeg', 'png'], true) && ($file['text_status'] !== 'ok' || $letters < 200);
         $reader = $this->readerFor($row, $transcribe);
         try {
-            $r = ($this->reader ?? new CvReader($this->app))->read((int) $row['candidate_id'], $reader, $transcribe);
+            $r = ($this->reader ?? new CvReader($this->app))->read((int) $row['candidate_id'], $reader, $transcribe, (int) $file['id']);
         } catch (\RuntimeException $e) {
             if (preg_match('/^(busy|stop):/', $e->getMessage())) {
                 $db->run("UPDATE cv_ai_reads SET status = 'pending' WHERE id = ?", [$id]);
