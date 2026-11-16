@@ -89,6 +89,9 @@ $check('no placement fee for staffing', !$db->col('SELECT id FROM placements WHE
     && (new Placements($app))->afterStage($appOf($staffRole), (int) $db->col("SELECT id FROM stages WHERE name = 'Joined'")) === null);
 $row = Joinings::csvRow($p);
 $check('the spreadsheet row lines up with its headings', count($row) === count(Joinings::CSV_HEAD) && $row[1] === 'Selvi Zzjoin' && $row[17] === '3 of 8');
+$safe = Joinings::csvSafe(['=HYPERLINK("https://example.com","Open")', '@SUM(A1)', '-2+3+cmd|x', '+91 98765 43210', '-12.5', 4.2, 'Selvi', '']);
+$check('audit S5: formula-like text is made plain text; phone numbers, numbers and names are untouched',
+    $safe === ["'=HYPERLINK(\"https://example.com\",\"Open\")", "'@SUM(A1)", "'-2+3+cmd|x", '+91 98765 43210', '-12.5', 4.2, 'Selvi', '']);
 
 echo "\nOur own team\n";
 $oid = $j->record($appOf($ownRole), $owner);

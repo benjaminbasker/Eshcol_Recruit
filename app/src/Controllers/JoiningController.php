@@ -36,7 +36,7 @@ final class JoiningController extends Controller
         fwrite($fh, "\xEF\xBB\xBF"); // so Excel reads ₹ and Tamil names correctly
         fputcsv($fh, Joinings::CSV_HEAD, ',', '"', '');
         foreach ($rows as $r) {
-            fputcsv($fh, Joinings::csvRow(json_decode((string) $r['payload'], true) ?: []), ',', '"', '');
+            fputcsv($fh, Joinings::csvSafe(Joinings::csvRow(json_decode((string) $r['payload'], true) ?: [])), ',', '"', '');
         }
         rewind($fh);
         $out = (string) stream_get_contents($fh);

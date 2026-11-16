@@ -62,7 +62,22 @@ $check('"Keep" takes them off the due list', !in_array($cid, array_column($ret->
 $check('and records the reason', $db->col('SELECT retention_note FROM candidates WHERE id = ?', [$cid]) === 'They asked to stay on file');
 
 echo "\nDeletion after \"Please remove me\"\n";
+// Audit R4: as if their CV had been copied off-site and the off-site store can't be reached right now.
+$f = $db->one('SELECT sha256, ext FROM cv_files WHERE candidate_id = ? ORDER BY id DESC LIMIT 1', [$cid]);
+$db->run('UPDATE cv_files SET backed_up_at = NOW() WHERE candidate_id = ?', [$cid]);
+$key = \Eshcol\Ats\Services\Backup::cvKey($f['sha256'], $f['ext']);
+$noRemoteHere = \Eshcol\Ats\Services\Backup::remote($app) === null;
 $ret->delete($cid, 'requested', true);
+if ($noRemoteHere) {
+    $check('audit R4: the off-site copy is written down to delete (no personal data, just the file key)', (bool) $db->col('SELECT 1 FROM remote_deletions WHERE remote_key = ?', [$key]));
+    $down = new class { public function delete(string $k): void { throw new RuntimeException('R2 unreachable'); } };
+    $bk = new \Eshcol\Ats\Services\Backup($app);
+    $check('...still listed while the store is down, with the reason', $bk->retryDeletions([$key], $down) === 0
+        && $db->one('SELECT tries, last_error FROM remote_deletions WHERE remote_key = ?', [$key]) === ['tries' => 1, 'last_error' => 'R2 unreachable']);
+    $up = new class { public array $gone = []; public function delete(string $k): void { $this->gone[] = $k; } };
+    $bk->retryDeletions([$key], $up);
+    $check('...and crossed off once the store confirms the delete', $up->gone === [$key] && !$db->col('SELECT 1 FROM remote_deletions WHERE remote_key = ?', [$key]));
+}
 $check('candidate row is gone', !$db->col('SELECT id FROM candidates WHERE id = ?', [$cid]));
 $check('their CV file is gone from storage', !is_file($path));
 $check('their CV text is gone from the database', !$db->col('SELECT COUNT(*) FROM cv_files WHERE candidate_id = ?', [$cid]));

@@ -56,6 +56,7 @@ $tasks = [
         $b = new Backup($app);
         $n = $b->syncCvs(200);
         [$docs, $gone] = $b->syncFiles(200);
+        $gone += (new \Eshcol\Ats\Services\Migrator($app))->pending() ? 0 : $b->retryDeletions(); // deleted candidates' CV copies (audit R4)
         return Backup::remote($app) ? "$n CV file(s), $docs document/logo file(s) copied off-site" . ($gone ? ", $gone removed" : '') : 'skipped (off-site copy not set up)';
     }],
     // Waits while a database update is pending, so a message is never lost to a table not yet made.

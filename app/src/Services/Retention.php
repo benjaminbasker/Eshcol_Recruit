@@ -97,19 +97,30 @@ final class Retention
                 }
             }
         }
-        $db->run('DELETE FROM notes WHERE entity_type = \'candidate\' AND entity_id = ?', [$candidateId]);
-        $db->run('DELETE FROM candidates WHERE id = ?', [$candidateId]);
+        // Audit R4 (16 Nov 2026): the off-site copies to delete are written down first, and crossed off only when the
+        // off-site store confirms, so a failure (or no connection right now) is retried by the off-site job.
+        $keys = array_map(fn ($f) => Backup::cvKey($f['sha256'], $f['ext']), array_filter($files, fn ($f) => $f['backed_up_at']));
+        $listed = !(new Migrator($this->app))->pending(); // the list exists from update 060
+        $db->tx(function () use ($db, $keys, $candidateId, $listed) {
+            foreach ($listed ? $keys : [] as $k) {
+                $db->run('INSERT IGNORE INTO remote_deletions (remote_key) VALUES (?)', [$k]);
+            }
+            $db->run('DELETE FROM notes WHERE entity_type = \'candidate\' AND entity_id = ?', [$candidateId]);
+            $db->run('DELETE FROM candidates WHERE id = ?', [$candidateId]);
+        });
         foreach ($branded as $p) {
             @unlink($this->app->storage($p));
         }
-        $remote = Backup::remote($this->app);
         foreach ($files as $f) {
             @unlink($this->app->storage($f['storage_path']));
-            if ($remote && $f['backed_up_at']) {
+        }
+        if ($keys && $listed) {
+            (new Backup($this->app))->retryDeletions($keys);
+        } elseif ($keys && ($remote = Backup::remote($this->app))) {
+            foreach ($keys as $k) {
                 try {
-                    $remote->delete(Backup::cvKey($f['sha256'], $f['ext']));
+                    $remote->delete($k);
                 } catch (\Throwable) {
-                    // Retried by the nightly job, which removes orphaned backup copies.
                 }
             }
         }

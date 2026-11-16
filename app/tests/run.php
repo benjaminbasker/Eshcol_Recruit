@@ -198,6 +198,16 @@ $te = new TextExtractor();
 $d = $te->extract($docx, 'docx');
 check('.docx read ok', $d['status'], 'ok');
 check('.docx text keeps lines', str_contains($d['text'], "PRIYA RAMANATHAN\nAccounts Executive"), true);
+// Audit S6: a small Word file that unpacks to more than the limit is refused, without unpacking it all.
+$bomb = "$tmp/bomb.docx";
+$zip = new ZipArchive();
+$zip->open($bomb, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+$zip->addFromString('word/document.xml', str_repeat('A', TextExtractor::DOCX_XML_MAX + 1024));
+$zip->close();
+check('audit S6: the test file is small on disk', filesize($bomb) < 200000, true);
+$b = $te->extract($bomb, 'docx');
+check('audit S6: a Word file that unpacks too large is refused', $b['status'] === 'failed' && $b['text'] === '', true);
+@unlink($bomb);
 
 // A minimal real PDF with one line of text, built by hand.
 $content = "BT /F1 12 Tf 50 750 Td (Kavitha Subramanian - Document Controller with 6 years of experience in Aconex and EDMS for EPC projects in Chennai and Doha.) Tj ET";

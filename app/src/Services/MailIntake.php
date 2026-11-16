@@ -337,7 +337,15 @@ final class MailIntake
         if (!$this->isCandidateAddress($from, $mailbox)) {
             return;
         }
-        $this->app->db->run("UPDATE candidates SET email = ? WHERE id = ? AND (email IS NULL OR email = '')", [mb_strtolower($from), $candidateId]);
+        // Audit C3 (16 Nov 2026): saved in the form used for matching too, marked as from their email (so a later CV
+        // reading keeps it), and never when another candidate already has this address.
+        $email = mb_strtolower(trim($from));
+        $db = $this->app->db;
+        if ($db->col('SELECT 1 FROM candidates WHERE email_norm = ? AND id <> ? LIMIT 1', [$email, $candidateId])) {
+            return;
+        }
+        $db->run("UPDATE candidates SET email = ?, email_norm = ?, field_sources = JSON_SET(COALESCE(field_sources, '{}'), '$.email', 'email')
+            WHERE id = ? AND (email IS NULL OR email = '')", [$email, $email, $candidateId]);
     }
 
     private function tokenFor(array $cfg): string

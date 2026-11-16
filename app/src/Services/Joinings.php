@@ -148,6 +148,20 @@ final class Joinings
         ];
     }
 
+    /**
+     * Audit S5 (16 Nov 2026): text a candidate typed that starts like a spreadsheet formula (= + - @, tab, return) gets a
+     * leading apostrophe, so Excel shows it as text instead of running it. Numbers and phone numbers are left alone.
+     */
+    public static function csvSafe(array $row): array
+    {
+        return array_map(function ($v) {
+            if (!is_string($v) || $v === '' || !preg_match('/^[=+\-@\t\r]/', $v) || preg_match('/^[+\-]?[\d\s().\-\/]+$/', $v)) {
+                return $v;
+            }
+            return "'" . $v;
+        }, $row);
+    }
+
     public const CSV_HEAD = ['Ref', 'Name', 'Email', 'Mobile', 'Type', 'Designation', 'Joining date', 'Work location', 'Contract ends', 'Gross per month (₹)',
         'Annual CTC (LPA)', 'ESI applies', 'Bonus eligible', 'Client', 'Client site', 'Bill per month (₹)', 'Margin %', 'Joining documents'];
 }

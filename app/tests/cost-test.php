@@ -196,6 +196,21 @@ $out = (new FitAssessor($app, $client([], $h3)))->submitBatch();
 $check("the monthly limit holds them back [$out]", str_contains($out, 'limit') && $h3 === [] && $db->col('SELECT status FROM fit_assessments WHERE id = ?', [$ids[1]]) === 'pending');
 $set('fit_monthly_limit', '600');
 
+echo "\nAudit C2: the requirements change while a batch is out\n";
+(new FitAssessor($app, $client([$batchJson('in_progress')])))->submitBatch();
+$f1 = $db->one('SELECT role_id, candidate_id, sent_cv_id FROM fit_assessments WHERE id = ?', [$ids[1]]);
+$check('the batch records which CV it was sent with', (int) $f1['sent_cv_id'] === (int) $db->col('SELECT id FROM cv_files WHERE candidate_id = ? AND text IS NOT NULL ORDER BY id DESC LIMIT 1', [$f1['candidate_id']]));
+$titleWas = (string) $db->col('SELECT title FROM roles WHERE id = ?', [$f1['role_id']]);
+$db->run('UPDATE roles SET title = ? WHERE id = ?', ["$titleWas (edited)", $f1['role_id']]);
+$late = $lines[0];
+$late['custom_id'] = 'fit-' . $ids[1];
+$costBefore = $fit->costThisMonth();
+$out = (new FitAssessor($app, $client([$batchJson('ended'), new Response(200, ['Content-Type' => 'application/x-jsonl'], json_encode($late) . "\n")])))->collectBatches();
+$f1b = $db->one('SELECT status, batch_id FROM fit_assessments WHERE id = ?', [$ids[1]]);
+$check("not scored against the changed role: back in the queue for the next half-price batch [$out]", $f1b['status'] === 'pending' && $f1b['batch_id'] === null);
+$check('...and what it cost still counts', abs($fit->costThisMonth() - $costBefore - 0.0125) < 0.00001);
+$db->run('UPDATE roles SET title = ? WHERE id = ?', [$titleWas, $f1['role_id']]);
+
 $okMsg = fn (string $stop = 'end_turn', ?array $content = null) => new Response(200, ['Content-Type' => 'application/json'], json_encode(['id' => 'msg_s', 'type' => 'message', 'role' => 'assistant',
     'model' => 'claude-sonnet-5-5', 'content' => $content ?? [['type' => 'text', 'text' => json_encode($reply)]], 'stop_reason' => $stop, 'stop_sequence' => null,
     'usage' => ['input_tokens' => 5000, 'output_tokens' => 1500]]));

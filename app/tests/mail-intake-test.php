@@ -127,6 +127,8 @@ $check('the email without an attachment is noted as "no CV"', ($by["bala.$tag@ca
 $chitra = (int) ($by["chitra.$tag@candidates.test"]['candidate_ids'] ?? 0);
 $check('no code in the subject: still imported, on no client role', $chitra && !$db->col('SELECT COUNT(*) FROM applications a JOIN roles r ON r.id = a.role_id WHERE a.candidate_id = ? AND r.is_pool = 0', [$chitra]));
 $check('a CV without an email address takes the sender\'s', $db->col('SELECT email FROM candidates WHERE id = ?', [$chitra]) === "chitra.$tag@candidates.test");
+$ch = $db->one('SELECT email_norm, JSON_VALUE(field_sources, \'$.email\') AS src FROM candidates WHERE id = ?', [$chitra]);
+$check('audit C3: ...saved for matching, and marked as from their email (a CV reading keeps it)', $ch['email_norm'] === "chitra.$tag@candidates.test" && $ch['src'] === 'email');
 $deepak = (int) ($by['noreply@indeed.com']['candidate_ids'] ?? 0);
 $check('…but never a job board\'s no-reply address', $deepak && !$db->col('SELECT email FROM candidates WHERE id = ?', [$deepak]));
 $check('thank-you emails queued for the new candidates (not for one without an address)', (int) $db->col("SELECT COUNT(*) FROM email_queue WHERE id > ? AND kind = 'ack'", [$maxEmail]) === 2);

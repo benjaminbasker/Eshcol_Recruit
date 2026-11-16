@@ -127,6 +127,33 @@ final class Backup
      * (a new upload gets a new name), so a list of what was sent is all we need.
      * Returns [copied, removed]. $remote is for tests; normally the configured store.
      */
+    /**
+     * Deletes off-site copies listed in remote_deletions (all, or just $only), crossing each off when the store confirms.
+     * Never throws. Returns how many were deleted. $remote is for tests; normally the configured store.
+     */
+    public function retryDeletions(?array $only = null, ?object $remote = null): int
+    {
+        $remote ??= self::remote($this->app);
+        if (!$remote) {
+            return 0;
+        }
+        $db = $this->app->db;
+        $rows = $only === null
+            ? $db->all('SELECT id, remote_key FROM remote_deletions ORDER BY id LIMIT 500')
+            : ($only ? $db->all('SELECT id, remote_key FROM remote_deletions WHERE remote_key IN (' . implode(',', array_fill(0, count($only), '?')) . ')', array_values($only)) : []);
+        $done = 0;
+        foreach ($rows as $r) {
+            try {
+                $remote->delete((string) $r['remote_key']);
+                $db->run('DELETE FROM remote_deletions WHERE id = ?', [$r['id']]);
+                $done++;
+            } catch (\Throwable $e) {
+                $db->run('UPDATE remote_deletions SET tries = tries + 1, last_error = ?, last_try_at = NOW() WHERE id = ?', [mb_substr($e->getMessage(), 0, 250), $r['id']]);
+            }
+        }
+        return $done;
+    }
+
     public function syncFiles(int $limit = 500, ?object $remote = null): array
     {
         $remote ??= self::remote($this->app);
@@ -176,8 +203,26 @@ final class Backup
     /** Streams every table to a gzip'd SQL file, without holding it all in memory. */
     public function dumpDatabase(string $target): void
     {
-        $pdo = $this->app->db->pdo();
+        // Audit R3 (16 Nov 2026): every table is read from one frozen moment (all tables are InnoDB), on a connection of its
+        // own, so the app keeps working while the copy is made and a restore never has half of a change.
+        $cfg = $this->app->config['db'];
+        $pdo = new \PDO(sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $cfg['host'], $cfg['port'] ?? 3306, $cfg['name']),
+            $cfg['user'], $cfg['pass'], [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);
+        $pdo->exec("SET time_zone = '+05:30'");
+        $pdo->exec('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+        $pdo->exec('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY');
         $gz = gzopen($target, 'wb6');
+        try {
+            $this->dumpTables($pdo, $gz);
+        } finally {
+            $pdo->inTransaction() && $pdo->rollBack();
+            gzclose($gz);
+        }
+    }
+
+    /** @param resource $gz */
+    private function dumpTables(\PDO $pdo, $gz): void
+    {
         gzwrite($gz, "-- Eshcol Recruit backup " . date('c') . "\nSET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n");
         $tables = $pdo->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(\PDO::FETCH_COLUMN);
         $buffered = defined('Pdo\Mysql::ATTR_USE_BUFFERED_QUERY') ? \Pdo\Mysql::ATTR_USE_BUFFERED_QUERY : \PDO::MYSQL_ATTR_USE_BUFFERED_QUERY;
@@ -203,7 +248,6 @@ final class Backup
             $pdo->setAttribute($buffered, true);
         }
         gzwrite($gz, "SET FOREIGN_KEY_CHECKS=1;\n");
-        gzclose($gz);
     }
 
     /** Restores a decrypted dump into the given database name (must already exist). */

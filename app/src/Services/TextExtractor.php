@@ -57,14 +57,42 @@ final class TextExtractor
         return implode("\n", $out);
     }
 
+    /** The most a Word file's text part may unpack to (a long CV is well under 2 MB). */
+    public const DOCX_XML_MAX = 20 * 1048576;
+
+    /**
+     * One part of a zip-based file, read only up to $max bytes once unpacked (audit S6, 16 Nov 2026: a tiny file can be
+     * made to unpack to hundreds of MB). '' when the part is missing; null when it is larger than $max.
+     */
+    public static function zipEntry(\ZipArchive $zip, string $name, int $max): ?string
+    {
+        $st = $zip->statName($name);
+        if ($st === false) {
+            return '';
+        }
+        if ($st['size'] > $max) {
+            return null;
+        }
+        $in = $zip->getStream($name);
+        if (!$in) {
+            return '';
+        }
+        $data = (string) stream_get_contents($in, $max + 1);
+        fclose($in);
+        return strlen($data) > $max ? null : $data; // the stated size can lie
+    }
+
     private function docx(string $path): string
     {
         $zip = new \ZipArchive();
         if ($zip->open($path) !== true) {
             throw new \RuntimeException('Not a valid .docx');
         }
-        $xml = $zip->getFromName('word/document.xml') ?: '';
+        $xml = self::zipEntry($zip, 'word/document.xml', self::DOCX_XML_MAX);
         $zip->close();
+        if ($xml === null) {
+            throw new \RuntimeException('This Word file unpacks to far more text than a CV has, so it was not read.');
+        }
         $xml = str_replace(['</w:p>', '<w:br/>', '<w:cr/>'], "\n", $xml);
         $xml = str_replace('<w:tab/>', "\t", $xml);
         return html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8');
@@ -82,7 +110,7 @@ final class TextExtractor
             if ($ext === 'docx') {
                 $zip = new \ZipArchive();
                 if ($zip->open($path) === true) {
-                    $rels = (string) $zip->getFromName('word/_rels/document.xml.rels');
+                    $rels = (string) self::zipEntry($zip, 'word/_rels/document.xml.rels', 2 * 1048576);
                     $zip->close();
                     preg_match_all('/Target="(https?:[^"]+)"[^>]*TargetMode="External"|TargetMode="External"[^>]*Target="(https?:[^"]+)"/i', $rels, $m);
                     $found = array_merge($m[1], $m[2]);

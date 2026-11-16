@@ -742,7 +742,7 @@ final class FitAssessor
             try {
                 $requests[] = ['customID' => "fit-$id", 'params' => $this->request($id)];
                 $role = $db->one('SELECT * FROM roles WHERE id = ?', [$row['role_id']]);
-                $sent[$id] = $this->roleVersion($role);
+                $sent[$id] = [$this->roleVersion($role), $this->cvIdFor((int) $db->col('SELECT candidate_id FROM fit_assessments WHERE id = ?', [$id]))];
             } catch (\RuntimeException $e) {
                 if (str_starts_with($e->getMessage(), 'stop:')) {
                     $db->run("UPDATE fit_assessments SET status = 'pending' WHERE status = 'reading' AND id IN (" . implode(',', array_merge([$id], array_keys($sent))) . ')');
@@ -769,11 +769,28 @@ final class FitAssessor
             return "paused: Claude did not take the batch ($why)";
         }
         $db->run("DELETE FROM settings WHERE k IN ('fit_batch_problem', 'fit_batch_problem_since', 'fit_batch_alerted')");
-        foreach ($sent as $id => $version) {
-            $db->run("UPDATE fit_assessments SET status = 'batched', batch_id = ?, role_version = ?, updated_at = NOW() WHERE id = ?", [$batch->id, $version, $id]);
+        foreach ($sent as $id => [$version, $cvId]) {
+            $db->run("UPDATE fit_assessments SET status = 'batched', batch_id = ?, role_version = ?, sent_cv_id = ?, updated_at = NOW() WHERE id = ?", [$batch->id, $version, $cvId, $id]);
         }
         Audit::log('fit_batch_sent', null, null, ['batch' => $batch->id, 'n' => count($sent)]);
         return count($sent) . ' assessment(s) sent to Claude in a half-price batch';
+    }
+
+    /** The CV an assessment is made from: the newest with text (as request() uses). */
+    private function cvIdFor(int $candidateId): ?int
+    {
+        $id = $this->app->db->col('SELECT id FROM cv_files WHERE candidate_id = ? AND text IS NOT NULL ORDER BY id DESC LIMIT 1', [$candidateId]);
+        return $id ? (int) $id : null;
+    }
+
+    /** Did the role's requirements or the candidate's CV change after this assessment was sent? */
+    private function changedSince(array $row): bool
+    {
+        $role = $this->app->db->one('SELECT * FROM roles WHERE id = ?', [$row['role_id']]);
+        if (!$role || ($row['role_version'] && $this->roleVersion($role) !== $row['role_version'])) {
+            return true;
+        }
+        return $row['sent_cv_id'] !== null && $this->cvIdFor((int) $row['candidate_id']) !== (int) $row['sent_cv_id'];
     }
 
     /**
@@ -874,11 +891,20 @@ final class FitAssessor
                         continue;
                     }
                     $fid = (int) $m[1];
-                    $row = $db->one('SELECT status, batch_id, role_version FROM fit_assessments WHERE id = ?', [$fid]);
+                    $row = $db->one('SELECT status, batch_id, role_version, sent_cv_id, role_id, candidate_id FROM fit_assessments WHERE id = ?', [$fid]);
                     if (!$row || $row['status'] !== 'batched' || $row['batch_id'] !== $bid) {
                         continue;
                     }
                     $type = (string) ($r->result->type ?? '');
+                    if ($type === 'succeeded' && $this->changedSince($row)) {
+                        // Audit C2: the requirements or the CV changed while the batch was out, so the answers no longer
+                        // line up. Back in the queue for the next half-price batch (never full price). Its cost still counts.
+                        [$cost] = CvReader::costOf($this->app, $r->result->message->usage, self::MODEL, self::PRICE[0], self::PRICE[1], 0.5);
+                        $this->count($cost);
+                        $db->run("UPDATE fit_assessments SET status = 'pending', batch_id = NULL WHERE id = ?", [$fid]);
+                        $again++;
+                        continue;
+                    }
                     if ($type === 'succeeded' && ($r->result->message->stopReason ?? '') === 'refusal') {
                         // Declined in the batch, which has no refusal fallback. Batch only: it waits for the owner,
                         // who can "Assess now" (full price, with the fallback) from the role's Claude tab.
