@@ -14,7 +14,7 @@ final class EmailController extends Controller
 {
     public function index(): never
     {
-        $tab = in_array($_GET['tab'] ?? '', ['held', 'pending', 'sent', 'failed'], true) ? $_GET['tab'] : null;
+        $tab = in_array($_GET['tab'] ?? '', ['held', 'pending', 'sent', 'failed', 'unsure'], true) ? $_GET['tab'] : null;
         $counts = array_column($this->db->all("SELECT status, COUNT(*) n FROM email_queue WHERE status <> 'cancelled' GROUP BY status"), 'n', 'status');
         $tab ??= ($counts['held'] ?? 0) ? 'held' : 'pending';
         $order = $tab === 'sent' ? 'e.sent_at DESC' : ($tab === 'pending' ? 'e.priority, e.not_before' : 'e.id DESC');
@@ -77,17 +77,19 @@ final class EmailController extends Controller
 
     public function cancel(int $id): never
     {
-        $this->db->run("UPDATE email_queue SET status = 'cancelled' WHERE id = ? AND status IN ('held','pending','failed')", [$id]);
+        $this->db->run("UPDATE email_queue SET status = 'cancelled' WHERE id = ? AND status IN ('held','pending','failed','unsure')", [$id]);
         Audit::log('email_cancelled', 'email', $id);
         Http::flash('ok', 'Cancelled. Nothing will be sent.');
-        Http::redirect('/emails?tab=' . (in_array($_POST['back'] ?? '', ['held', 'pending', 'failed'], true) ? $_POST['back'] : 'held'));
+        Http::redirect('/emails?tab=' . (in_array($_POST['back'] ?? '', ['held', 'pending', 'failed', 'unsure'], true) ? $_POST['back'] : 'held'));
     }
 
     public function retry(int $id): never
     {
-        $this->db->run("UPDATE email_queue SET status = 'pending', attempts = 0, not_before = NOW() WHERE id = ? AND status = 'failed'", [$id]);
+        $was = (string) $this->db->col('SELECT status FROM email_queue WHERE id = ?', [$id]);
+        $this->db->run("UPDATE email_queue SET status = 'pending', attempts = 0, not_before = NOW() WHERE id = ? AND status IN ('failed','unsure')", [$id]);
+        Audit::log('email_retried', 'email', $id, ['was' => $was]);
         Http::flash('ok', 'Queued again. It goes out with the next send.');
-        Http::redirect('/emails?tab=failed');
+        Http::redirect('/emails?tab=' . ($was === 'unsure' ? 'unsure' : 'failed'));
     }
 
     /** Owner: approve or cancel every held email at once. */

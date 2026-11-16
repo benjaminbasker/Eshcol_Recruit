@@ -248,6 +248,26 @@ $check('…or from the sender, never a job board or our own website', $mi2->name
     && $mi2->nameFromEmail('New application', '', '', 'noreply@indeed.com', 'Indeed', 'resume@eshcolglobal.com') === null
     && $mi2->nameFromEmail('Hello', '', '', 'no-reply@eshcolglobal.com', 'Eshcol Global Website', 'resume@eshcolglobal.com') === null);
 $check('a sentence scrap is never taken for a name', !Eshcol\Ats\Services\FieldExtractor::looksLikeName('And Knowledge Appropriately.') && Eshcol\Ats\Services\FieldExtractor::looksLikeName('Santhosh K.'));
+
+echo "\nAudit C4: a full page of emails already read at the same time\n";
+$same = $db->col('SELECT v FROM settings WHERE k = ?', ['mail_intake_since']);
+$seen = array_map(fn ($x) => array_diff_key($x, ['att' => 1]) + ['receivedDateTime' => $same], array_slice($msgs, 0, 3));
+$newOne = ['id' => 'c4new', 'internetMessageId' => "<c4new-$tag@x>", 'subject' => 'Hello', 'from' => ['emailAddress' => ['address' => "zed.$tag@candidates.test", 'name' => 'Zed']],
+    'receivedDateTime' => $same, 'hasAttachments' => false, 'categories' => []];
+$pageCalls = [];
+$paged = function (string $method, string $url, array $headers, ?string $body) use ($http, $seen, $newOne, &$pageCalls): array {
+    if (str_contains($url, '/mailFolders/inbox/messages')) {
+        $pageCalls[] = $url;
+        return str_contains($url, 'skiptoken=p2')
+            ? [200, json_encode(['value' => [$newOne], '@odata.nextLink' => 'https://evil.example/steal?skiptoken=p3'])]
+            : [200, json_encode(['value' => $seen, '@odata.nextLink' => 'https://graph.microsoft.com/v1.0/users/resume%40eshcolglobal.com/mailFolders/inbox/messages?$skiptoken=p2'])];
+    }
+    return $http($method, $url, $headers, $body);
+};
+$outC4 = (new MailIntake($app, $paged))->run(3);
+$check("the next page is fetched, so the newer email is reached [$outC4]", count($pageCalls) === 2 && (bool) $db->col('SELECT 1 FROM mail_intake WHERE message_key = ?', [hash('sha256', "<c4new-$tag@x>")]) && str_starts_with($outC4, '1 new email'));
+$check('a "next page" pointing anywhere but Microsoft is never followed (the sign-in token stays safe)', !array_filter($pageCalls, fn ($u) => str_contains($u, 'evil.example')));
+
 $db->run("UPDATE settings SET v = '0' WHERE k = 'mail_intake_on'");
 $check('paused: nothing is read', (new MailIntake($app, $http))->run() === 'skipped (CV inbox not connected)');
 exit(0);

@@ -1,6 +1,6 @@
 <?php $kinds = ['ack' => 'Thank-you email', 'test' => 'Test email']; ?>
 <div class="page-head">
-  <div><p class="eyebrow"><?= e($kinds[$e['kind']] ?? ucfirst($e['kind'])) ?> · <?= e(['held' => 'waiting for you', 'pending' => 'queued', 'sent' => 'sent ' . nice_date($e['sent_at'], true), 'failed' => 'failed', 'cancelled' => 'cancelled'][$e['status']]) ?></p>
+  <div><p class="eyebrow"><?= e($kinds[$e['kind']] ?? ucfirst($e['kind'])) ?> · <?= e(['held' => 'waiting for you', 'pending' => 'queued', 'sent' => 'sent ' . nice_date($e['sent_at'], true), 'failed' => 'failed', 'cancelled' => 'cancelled', 'unsure' => 'may have been sent'][$e['status']]) ?></p>
     <h1><?= e($e['subject']) ?></h1>
     <p class="muted">To <?= $e['candidate_id'] ? '<a href="/candidates/' . (int) $e['candidate_id'] . '">' . e($e['full_name'] ?: $e['to_name'] ?: 'the candidate') . '</a>' : e($e['to_name'] ?: '') ?> &lt;<?= e($e['to_email']) ?>&gt;</p></div>
   <a class="btn ghost" href="/emails?tab=<?= e($e['status'] === 'cancelled' ? 'sent' : $e['status']) ?>">Back to emails</a>
@@ -27,6 +27,12 @@
 <?php elseif ($e['status'] === 'failed'): ?>
   <form method="post" action="/emails/<?= (int) $e['id'] ?>/retry" class="card"><?= csrf() ?>
     <p class="small" style="margin:0 0 8px"><b>Problem:</b> <?= e((string) $e['last_error']) ?></p><button class="btn ghost small" type="submit">Try again</button></form>
+<?php elseif ($e['status'] === 'unsure'): ?>
+  <div class="card sand">
+    <p class="small" style="margin:0 0 8px"><b>It may already have arrived.</b> <?= e(rtrim((string) $e['last_error'], '. ')) ?>. It will not be sent again by itself. If <?= e($e['to_name'] ?: $e['to_email']) ?> did not get it, send it again; otherwise cancel it.</p>
+    <form method="post" action="/emails/<?= (int) $e['id'] ?>/retry" style="display:inline"><?= csrf() ?><button class="btn small" type="submit">Send again</button></form>
+    <form method="post" action="/emails/<?= (int) $e['id'] ?>/cancel" style="display:inline"><?= csrf() ?><input type="hidden" name="back" value="unsure"><button class="btn ghost small" type="submit">It arrived: cancel</button></form>
+  </div>
 <?php endif; ?>
 <div class="card" style="padding:0;overflow:hidden">
   <iframe src="/emails/<?= (int) $e['id'] ?>/body" sandbox="allow-same-origin" title="Email preview" style="width:100%;height:1400px;border:0;display:block;background:#F2EFE7"></iframe>

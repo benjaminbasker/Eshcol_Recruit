@@ -74,8 +74,16 @@ final class CvReport
         $out = [];
         // A contractor sees only their own positions here too (found by the page smoke test, 15 Nov 2026).
         $mine = \Eshcol\Ats\Access::roleFilter(\Eshcol\Ats\Auth::user(), 'r.id');
-        foreach ($db->all("SELECT r.*, cl.name AS client, cl.interview_address, cl.maps_url FROM roles r JOIN clients cl ON cl.id = r.client_id WHERE r.status = 'open' AND r.is_pool = 0 AND $mine ORDER BY r.id") as $r) {
-            $crit = $db->all('SELECT kind, value FROM role_criteria WHERE role_id = ? ORDER BY sort, id', [$r['id']]);
+        $roles = $db->all("SELECT r.*, cl.name AS client, cl.interview_address, cl.maps_url FROM roles r JOIN clients cl ON cl.id = r.client_id WHERE r.status = 'open' AND r.is_pool = 0 AND $mine ORDER BY r.id");
+        // Every open role's requirements in one request (audit P1, 16 Nov 2026), not one per role.
+        $critBy = [];
+        if ($roles) {
+            foreach ($db->all('SELECT role_id, kind, value FROM role_criteria WHERE role_id IN (' . implode(',', array_map(fn ($r) => (int) $r['id'], $roles)) . ') ORDER BY sort, id') as $cr) {
+                $critBy[(int) $cr['role_id']][] = ['kind' => $cr['kind'], 'value' => $cr['value']];
+            }
+        }
+        foreach ($roles as $r) {
+            $crit = $critBy[(int) $r['id']] ?? [];
             $s = $scorer->score($r, $crit, $c, $text);
             $p = $s['breakdown']['parts'];
             $out[] = [

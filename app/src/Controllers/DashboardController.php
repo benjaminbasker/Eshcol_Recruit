@@ -177,6 +177,12 @@ final class DashboardController extends Controller
             if ($failed) {
                 $alerts[] = ['info', "$failed email" . ($failed > 1 ? 's' : '') . ' could not be sent this week. <a href="/emails?tab=failed">See why</a>.'];
             }
+            // Audit R5: handed to Brevo with no clear answer (a timeout, or the run stopped; not_before = when it was handed over).
+            // Waits for you, never resent by itself. One being sent this very minute is not counted.
+            $unsure = (int) $this->db->col("SELECT COUNT(*) FROM email_queue WHERE status = 'unsure' AND (last_error LIKE 'Brevo may%' OR not_before < NOW() - INTERVAL 15 MINUTE)");
+            if ($unsure) {
+                $alerts[] = ['info', "$unsure email" . ($unsure > 1 ? 's' : '') . ' may or may not have gone (Brevo gave no clear answer). <a href="/emails?tab=unsure">Check and choose</a>.'];
+            }
         }
         if (!$this->app->isLocal() && !$mailer->live() && (\Eshcol\Ats\Auth::user()['role'] ?? '') === 'owner'
             && $this->db->col("SELECT 1 FROM email_queue WHERE kind <> 'test' LIMIT 1")) {

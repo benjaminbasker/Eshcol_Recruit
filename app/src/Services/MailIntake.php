@@ -89,81 +89,94 @@ final class MailIntake
             '$top' => (string) $maxEmails,
             '$select' => 'id,internetMessageId,subject,from,replyTo,receivedDateTime,hasAttachments,categories,body',
         ], '', '&', PHP_QUERY_RFC3986);
-        [$code, $body] = $this->graph($cfg, 'GET', $url, null, ['Prefer: outlook.body-content-type="text"']);
-        if ($code !== 200) {
-            throw new \RuntimeException($this->graphError($code, $body, $cfg['mailbox']));
-        }
         $userId = (int) $db->col("SELECT id FROM users WHERE role = 'owner' AND is_active = 1 ORDER BY id LIMIT 1");
         $ack = new Acknowledger($this->app);
         $sendAck = $this->app->setting('mail_intake_ack', '1') === '1' && $ack->enabled();
         $counts = ['emails' => 0, 'cvs' => 0, 'no_cv' => 0, 'failed' => 0, 'messages' => 0];
         $messages = new CandidateMessages($this->app);
         $cursor = $since;
-        foreach ((array) (json_decode($body, true)['value'] ?? []) as $m) {
-            $cursor = (string) ($m['receivedDateTime'] ?? $cursor);
-            $key = hash('sha256', (string) ($m['internetMessageId'] ?? $m['id']));
-            if ($db->col('SELECT id FROM mail_intake WHERE message_key = ?', [$key])) {
-                continue;
+        // Audit C4 (16 Nov 2026): follow Microsoft's "next page", so emails already read here (e.g. many with the same
+        // time as the saved place) never hide newer ones. Up to $maxEmails new ones per run.
+        $pages = 0;
+        while ($url !== null && $pages++ < 20) {
+            [$code, $body] = $this->graph($cfg, 'GET', $url, null, ['Prefer: outlook.body-content-type="text"']);
+            if ($code !== 200) {
+                $this->set('mail_intake_since', $cursor);
+                throw new \RuntimeException($this->graphError($code, $body, $cfg['mailbox']));
             }
-            $counts['emails']++;
-            $from = (string) ($m['from']['emailAddress']['address'] ?? '');
-            $replyTo = (string) ($m['replyTo'][0]['emailAddress']['address'] ?? '');
-            $replyName = (string) ($m['replyTo'][0]['emailAddress']['name'] ?? '');
-            $fromName = (string) ($m['from']['emailAddress']['name'] ?? '');
-            $subject = (string) ($m['subject'] ?? '');
-            $roleId = $this->roleFromSubject($subject);
-            $row = ['message_key' => $key, 'from_email' => mb_substr($from, 0, 190), 'from_name' => mb_substr($fromName, 0, 190),
-                'subject' => mb_substr($subject, 0, 255), 'role_id' => $roleId,
-                'received_at' => isset($m['receivedDateTime']) ? date('Y-m-d H:i:s', strtotime($m['receivedDateTime'])) : null];
-
-            $files = !empty($m['hasAttachments']) ? $this->attachments($cfg, $box, (string) $m['id']) : [];
-            $text = (string) ($m['body']['content'] ?? '');
-            if (!$files) {
-                // From someone we already have? Keep it as a message on their record.
-                $known = $this->knownCandidate($replyTo, $from, $cfg['mailbox']);
-                if ($known) {
-                    $intakeId = $db->insert('mail_intake', $row + ['outcome' => 'message', 'detail' => 'Message from ' . ref_candidate($known) . '.', 'candidate_ids' => (string) $known]);
-                    if ($messages->record($known, $text, 'email', $replyTo !== '' && $this->isCandidateAddress($replyTo, $cfg['mailbox']) ? $replyTo : $from, $subject, $row['received_at'], $intakeId, (string) ($m['internetMessageId'] ?? ''))) {
-                        $counts['messages']++;
-                    }
-                    $this->tag($cfg, $box, $m);
+            $page = (array) json_decode($body, true);
+            $next = $page['@odata.nextLink'] ?? null;
+            $url = is_string($next) && str_starts_with($next, self::GRAPH . '/') ? substr($next, strlen(self::GRAPH)) : null;
+            foreach ((array) ($page['value'] ?? []) as $m) {
+                if ($counts['emails'] >= $maxEmails) {
+                    $url = null;
+                    break;
+                }
+                $cursor = (string) ($m['receivedDateTime'] ?? $cursor);
+                $key = hash('sha256', (string) ($m['internetMessageId'] ?? $m['id']));
+                if ($db->col('SELECT id FROM mail_intake WHERE message_key = ?', [$key])) {
                     continue;
                 }
-                $db->insert('mail_intake', $row + ['outcome' => 'no_cv', 'detail' => 'No CV attached.']);
-                $counts['no_cv']++;
-                continue;
-            }
-            $notes = [];
-            $cands = [];
-            foreach ($files as [$name, $bytes]) {
-                $tmp = $this->app->storage('uploads-tmp/mail-' . bin2hex(random_bytes(8)));
-                file_put_contents($tmp, $bytes);
-                try {
-                    $r = (new CandidateImporter($this->app))->import($tmp, $name, $roleId, $userId, 'email', self::channelOf($from, $subject, $name));
-                } finally {
-                    @unlink($tmp);
+                $counts['emails']++;
+                $from = (string) ($m['from']['emailAddress']['address'] ?? '');
+                $replyTo = (string) ($m['replyTo'][0]['emailAddress']['address'] ?? '');
+                $replyName = (string) ($m['replyTo'][0]['emailAddress']['name'] ?? '');
+                $fromName = (string) ($m['from']['emailAddress']['name'] ?? '');
+                $subject = (string) ($m['subject'] ?? '');
+                $roleId = $this->roleFromSubject($subject);
+                $row = ['message_key' => $key, 'from_email' => mb_substr($from, 0, 190), 'from_name' => mb_substr($fromName, 0, 190),
+                    'subject' => mb_substr($subject, 0, 255), 'role_id' => $roleId,
+                    'received_at' => isset($m['receivedDateTime']) ? date('Y-m-d H:i:s', strtotime($m['receivedDateTime'])) : null];
+
+                $files = !empty($m['hasAttachments']) ? $this->attachments($cfg, $box, (string) $m['id']) : [];
+                $text = (string) ($m['body']['content'] ?? '');
+                if (!$files) {
+                    // From someone we already have? Keep it as a message on their record.
+                    $known = $this->knownCandidate($replyTo, $from, $cfg['mailbox']);
+                    if ($known) {
+                        $intakeId = $db->insert('mail_intake', $row + ['outcome' => 'message', 'detail' => 'Message from ' . ref_candidate($known) . '.', 'candidate_ids' => (string) $known]);
+                        if ($messages->record($known, $text, 'email', $replyTo !== '' && $this->isCandidateAddress($replyTo, $cfg['mailbox']) ? $replyTo : $from, $subject, $row['received_at'], $intakeId, (string) ($m['internetMessageId'] ?? ''))) {
+                            $counts['messages']++;
+                        }
+                        $this->tag($cfg, $box, $m);
+                        continue;
+                    }
+                    $db->insert('mail_intake', $row + ['outcome' => 'no_cv', 'detail' => 'No CV attached.']);
+                    $counts['no_cv']++;
+                    continue;
                 }
-                $notes[] = "$name: " . $r['message'];
-                if (!empty($r['candidate_id']) && in_array($r['outcome'], ['new', 'updated', 'duplicate_file'], true)) {
-                    $cid = (int) $r['candidate_id'];
-                    $cands[] = $cid;
-                    $this->fillEmail($cid, $replyTo !== '' && $this->isCandidateAddress($replyTo, $cfg['mailbox']) ? $replyTo : $from, $cfg['mailbox']);
-                    $this->fillName($cid, $this->nameFromEmail($subject, $replyTo, $replyName, $from, $fromName, $cfg['mailbox']));
-                    if ($sendAck && $r['outcome'] !== 'duplicate_file') {
-                        $a = $ack->acknowledge($cid, $roleId, $userId);
-                        $notes[] = $a['message'];
+                $notes = [];
+                $cands = [];
+                foreach ($files as [$name, $bytes]) {
+                    $tmp = $this->app->storage('uploads-tmp/mail-' . bin2hex(random_bytes(8)));
+                    file_put_contents($tmp, $bytes);
+                    try {
+                        $r = (new CandidateImporter($this->app))->import($tmp, $name, $roleId, $userId, 'email', self::channelOf($from, $subject, $name));
+                    } finally {
+                        @unlink($tmp);
+                    }
+                    $notes[] = "$name: " . $r['message'];
+                    if (!empty($r['candidate_id']) && in_array($r['outcome'], ['new', 'updated', 'duplicate_file'], true)) {
+                        $cid = (int) $r['candidate_id'];
+                        $cands[] = $cid;
+                        $this->fillEmail($cid, $replyTo !== '' && $this->isCandidateAddress($replyTo, $cfg['mailbox']) ? $replyTo : $from, $cfg['mailbox']);
+                        $this->fillName($cid, $this->nameFromEmail($subject, $replyTo, $replyName, $from, $fromName, $cfg['mailbox']));
+                        if ($sendAck && $r['outcome'] !== 'duplicate_file') {
+                            $a = $ack->acknowledge($cid, $roleId, $userId);
+                            $notes[] = $a['message'];
+                        }
                     }
                 }
+                $ok = (bool) $cands;
+                $intakeId = $db->insert('mail_intake', $row + ['outcome' => $ok ? 'imported' : 'failed', 'detail' => mb_substr(implode("\n", $notes), 0, 4000),
+                    'candidate_ids' => $cands ? implode(',', array_unique($cands)) : null]);
+                $ok ? $counts['cvs'] += count(array_unique($cands)) : $counts['failed']++;
+                // A reply to our email with an updated CV may say something too: keep the words as a message.
+                if ($ok && preg_match('/^\s*(?:re|aw|fwd?)\s*:/i', $subject) && $messages->record((int) $cands[0], $text, 'email', $from, $subject, $row['received_at'], $intakeId, (string) ($m['internetMessageId'] ?? ''))) {
+                    $counts['messages']++;
+                }
+                $this->tag($cfg, $box, $m);
             }
-            $ok = (bool) $cands;
-            $intakeId = $db->insert('mail_intake', $row + ['outcome' => $ok ? 'imported' : 'failed', 'detail' => mb_substr(implode("\n", $notes), 0, 4000),
-                'candidate_ids' => $cands ? implode(',', array_unique($cands)) : null]);
-            $ok ? $counts['cvs'] += count(array_unique($cands)) : $counts['failed']++;
-            // A reply to our email with an updated CV may say something too: keep the words as a message.
-            if ($ok && preg_match('/^\s*(?:re|aw|fwd?)\s*:/i', $subject) && $messages->record((int) $cands[0], $text, 'email', $from, $subject, $row['received_at'], $intakeId, (string) ($m['internetMessageId'] ?? ''))) {
-                $counts['messages']++;
-            }
-            $this->tag($cfg, $box, $m);
         }
         $this->set('mail_intake_since', $cursor);
         $this->set('mail_intake_last_ok', date('Y-m-d H:i:s'));

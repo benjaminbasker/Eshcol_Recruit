@@ -16,12 +16,13 @@ final class JoiningController extends Controller
         Auth::requireOwner();
         $show = in_array($_GET['show'] ?? '', ['all', 'withdrawn'], true) ? $_GET['show'] : 'open';
         $where = match ($show) { 'all' => '1=1', 'withdrawn' => "status = 'withdrawn'", default => "status IN ('ready','downloaded')" };
-        $rows = $this->db->all("SELECT id, application_id, candidate_id, full_name, engagement, joining_date, status, payload, created_at, downloaded_at FROM joinings WHERE $where ORDER BY joining_date IS NULL, joining_date DESC, id DESC");
-        foreach ($rows as &$r) {
-            $r['p'] = json_decode((string) $r['payload'], true) ?: [];
-        }
-        unset($r);
-        $this->view('joinings/index', ['title' => 'Joinings', 'rows' => $rows, 'show' => $show,
+        // Audit P2 (16 Nov 2026): only the fields the table shows are read from each record, 100 at a time; the full record
+        // (histories, references) is opened only by "Full record".
+        $per = 100;
+        $page = max(1, (int) ($_GET['page'] ?? 1));
+        $total = (int) $this->db->col("SELECT COUNT(*) FROM joinings WHERE $where");
+        $rows = Joinings::summaries($this->app, $where, $per, ($page - 1) * $per);
+        $this->view('joinings/index', ['title' => 'Joinings', 'rows' => $rows, 'show' => $show, 'page' => $page, 'pages' => max(1, (int) ceil($total / $per)),
             'counts' => array_column($this->db->all('SELECT status, COUNT(*) n FROM joinings GROUP BY status'), 'n', 'status')]);
     }
 

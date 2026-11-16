@@ -141,6 +141,14 @@ final class Mailer
             $db->run("UPDATE email_queue SET status = 'cancelled', last_error = ? WHERE id = ?", ["Not sent: $stop", $row['id']]);
             return false;
         }
+        // Audit R5 (16 Nov 2026): marked "unsure" before it is handed over. If the answer is lost, or this run stops before
+        // saving it, it stays "unsure" and is never sent again by itself (you choose: resend or cancel). A clear refusal puts
+        // it back as before. Also stops two runs sending the same email.
+        $claimed = !(new Migrator($this->app))->pending() ? $db->run("UPDATE email_queue SET status = 'unsure', not_before = NOW(), last_error = ? WHERE id = ? AND status = 'pending'",
+            ['Handed to Brevo ' . date('j M, g:i a') . '; no answer was saved.', $row['id']])->rowCount() : 1;
+        if ($claimed !== 1) {
+            return false;
+        }
         try {
             $providerId = $this->transport ? ($this->transport)($row) : ($this->live() ? $this->viaBrevo($row) : $this->toOutbox($row));
             $db->run("UPDATE email_queue SET status = 'sent', sent_at = NOW(), provider_id = ?, attempts = attempts + 1, last_error = NULL WHERE id = ?", [$providerId, $row['id']]);
@@ -151,9 +159,14 @@ final class Mailer
             }
             return true;
         } catch (MailError $e) {
+            if ($e->unsure) {
+                $db->run('UPDATE email_queue SET attempts = attempts + 1, last_error = ? WHERE id = ?', [mb_substr('Brevo may have sent it: ' . $e->getMessage(), 0, 255), $row['id']]);
+                Audit::log('email_unsure', 'email', (int) $row['id'], ['kind' => $row['kind']]);
+                return false;
+            }
             if ($e->keyProblem) {
                 // Not the email's fault: keep it queued, and say so loudly (dashboard + Settings).
-                $db->run('UPDATE email_queue SET last_error = ?, not_before = NOW() + INTERVAL 5 MINUTE WHERE id = ?', [mb_substr($e->getMessage(), 0, 255), $row['id']]);
+                $db->run("UPDATE email_queue SET status = 'pending', last_error = ?, not_before = NOW() + INTERVAL 5 MINUTE WHERE id = ?", [mb_substr($e->getMessage(), 0, 255), $row['id']]);
                 $db->run("INSERT INTO settings (k, v) VALUES ('mail_key_problem', ?) ON DUPLICATE KEY UPDATE v = VALUES(v)", [date('Y-m-d H:i:s') . '|' . mb_substr($e->getMessage(), 0, 200)]);
                 Audit::log('email_key_refused', 'email', (int) $row['id']);
                 return false;
@@ -200,14 +213,14 @@ final class Mailer
             curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20,
                 CURLOPT_HTTPHEADER => ['accept: application/json', 'content-type: application/json', 'api-key: ' . $key],
                 CURLOPT_POSTFIELDS => self::brevoJson($payload)]);
-            return [(string) curl_exec($ch), (int) curl_getinfo($ch, CURLINFO_HTTP_CODE), curl_error($ch)];
+            return [(string) curl_exec($ch), (int) curl_getinfo($ch, CURLINFO_HTTP_CODE), curl_error($ch), curl_errno($ch)];
         };
-        [$body, $code, $err] = $post($payload);
+        [$body, $code, $err, $errno] = $post($payload);
         // Brevo refusing our extra headers (e.g. the thread headers of a reply) must not stop the email: send it without them.
         if ($code === 400 && !empty($payload['headers']) && stripos($body, 'header') !== false) {
             unset($payload['headers']['In-Reply-To'], $payload['headers']['References'], $payload['headers']['List-Unsubscribe'], $payload['headers']['List-Unsubscribe-Post']);
             $payload['headers'] = $payload['headers'] ?: null;
-            [$body, $code, $err] = $post($payload);
+            [$body, $code, $err, $errno] = $post($payload);
         }
         if ($code >= 200 && $code < 300) {
             return (string) (json_decode($body, true)['messageId'] ?? 'brevo');
@@ -215,7 +228,14 @@ final class Mailer
         $msg = $code ? "Brevo said $code: " . mb_substr((string) (json_decode($body, true)['message'] ?? $body), 0, 160) : "Could not reach Brevo: $err";
         // 401/403 = the key (or this server's IP) is refused: pause the queue, the emails are fine.
         // 400 = bad address or content: retrying won't help.
-        throw new MailError($msg, $code === 400, in_array($code, [401, 403], true));
+        // The request went out but the answer was lost (timed out, cut off, 504): Brevo may have sent it.
+        throw new MailError($msg, $code === 400, in_array($code, [401, 403], true), self::unsureFailure($code, $errno));
+    }
+
+    /** True when Brevo may have taken the email although no answer came back (curl 28 timeout, 52 empty reply, 56 cut off; HTTP 504). */
+    public static function unsureFailure(int $httpCode, int $curlErrno): bool
+    {
+        return $httpCode === 504 || ($httpCode === 0 && in_array($curlErrno, [28, 52, 56], true));
     }
 
     /** The JSON Brevo receives: empty or missing parts left out (an empty list for "headers" is refused). */

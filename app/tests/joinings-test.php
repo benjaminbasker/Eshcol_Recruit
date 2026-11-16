@@ -92,6 +92,12 @@ $check('the spreadsheet row lines up with its headings', count($row) === count(J
 $safe = Joinings::csvSafe(['=HYPERLINK("https://example.com","Open")', '@SUM(A1)', '-2+3+cmd|x', '+91 98765 43210', '-12.5', 4.2, 'Selvi', '']);
 $check('audit S5: formula-like text is made plain text; phone numbers, numbers and names are untouched',
     $safe === ["'=HYPERLINK(\"https://example.com\",\"Open\")", "'@SUM(A1)", "'-2+3+cmd|x", '+91 98765 43210', '-12.5', 4.2, 'Selvi', '']);
+$sum = array_values(array_filter(Joinings::summaries($app, "id = $sid", 100, 0), fn ($r) => (int) $r['id'] === $sid))[0] ?? null;
+$check('audit P2: the list reads only its fields, and they match the full record', $sum
+    && $sum['p']['job']['designation'] === $p['job']['designation'] && $sum['p']['job']['contract_end'] === $p['job']['contract_end']
+    && (float) $sum['p']['pay']['gross_month'] === (float) $p['pay']['gross_month'] && $sum['p']['deployment']['client_name'] === $p['deployment']['client_name']
+    && $sum['p']['deployment']['client_site'] === $p['deployment']['client_site'] && (float) $sum['p']['deployment']['margin_pct'] === (float) $p['deployment']['margin_pct']
+    && (int) $sum['doc_n'] === 3 && $sum['p']['source_ref']['candidate_ref'] === $p['source_ref']['candidate_ref'] && !array_key_exists('payload', $sum));
 
 echo "\nOur own team\n";
 $oid = $j->record($appOf($ownRole), $owner);

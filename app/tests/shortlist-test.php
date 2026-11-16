@@ -74,6 +74,9 @@ $qs->submit($qs->byToken((string) \Eshcol\Ats\Secrets::open($app, (string) $db->
 $svc = new Shortlists($app);
 
 echo "Profiles\n";
+$rm = $svc->autoRemarks([$aa, $ba]);
+$check('audit P1: the remarks for many at once are the same as one by one ("' . ($rm[$aa] ?? '') . '")',
+    ($rm[$aa] ?? null) === 'Will consider ' . inr(5) . '. Fine with the location' && $rm[$ba] === '' && $svc->autoRemark($aa) === $rm[$aa]);
 $sum = $svc->autoSummary($aa);
 $check('the draft line mentions experience, current job and matched skills: "' . $sum . '"', str_contains($sum, 'experience') && str_contains($sum, 'Accounts Executive') && str_contains($sum, 'Tally'));
 $p = $svc->profile($aa, true);

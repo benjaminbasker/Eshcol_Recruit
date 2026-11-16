@@ -133,6 +133,28 @@ final class Joinings
         ];
     }
 
+    /**
+     * The Joinings list (audit P2, 16 Nov 2026): only the fields the table shows, read inside the database, so the full
+     * records are never loaded for the list. $where is fixed SQL from the controller. Each row has 'p' shaped like the payload.
+     */
+    public static function summaries(\Eshcol\Ats\App $app, string $where, int $limit, int $offset): array
+    {
+        $rows = $app->db->all("SELECT id, application_id, candidate_id, full_name, engagement, joining_date, status, created_at, downloaded_at,
+                JSON_VALUE(payload, '$.source_ref.candidate_ref') AS ref, JSON_VALUE(payload, '$.job.designation') AS designation,
+                JSON_VALUE(payload, '$.job.contract_end') AS contract_end, JSON_VALUE(payload, '$.pay.gross_month') AS gross_month,
+                JSON_VALUE(payload, '$.pay.annual_ctc_lpa') AS annual_ctc_lpa, JSON_TYPE(JSON_EXTRACT(payload, '$.deployment')) = 'OBJECT' AS deployed,
+                JSON_VALUE(payload, '$.deployment.client_name') AS client_name, JSON_VALUE(payload, '$.deployment.client_site') AS client_site,
+                JSON_VALUE(payload, '$.deployment.margin_pct') AS margin_pct, COALESCE(JSON_LENGTH(payload, '$.documents'), 0) AS doc_n
+            FROM joinings WHERE $where ORDER BY joining_date IS NULL, joining_date DESC, id DESC LIMIT " . max(1, $limit) . ' OFFSET ' . max(0, $offset));
+        foreach ($rows as &$r) {
+            $r['p'] = ['source_ref' => ['candidate_ref' => $r['ref']], 'job' => ['designation' => $r['designation'], 'contract_end' => $r['contract_end']],
+                'pay' => ['gross_month' => $r['gross_month'], 'annual_ctc_lpa' => $r['annual_ctc_lpa']],
+                'deployment' => $r['deployed'] ? ['client_name' => $r['client_name'], 'client_site' => $r['client_site'], 'margin_pct' => $r['margin_pct']] : null];
+        }
+        unset($r);
+        return $rows;
+    }
+
     /** One row per person for the spreadsheet download: the fields a payroll set-up needs first. */
     public static function csvRow(array $p): array
     {

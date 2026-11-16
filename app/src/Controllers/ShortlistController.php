@@ -27,8 +27,9 @@ final class ShortlistController extends Controller
             WHERE a.role_id = ? AND s.kind = 'active' AND " . \Eshcol\Ats\Services\Contact::putForwardSql('c') . "
             ORDER BY s.sort DESC, eff_score DESC LIMIT 100", [$roleId]);
         $svc = new Shortlists($this->app);
+        $remarks = $svc->autoRemarks(array_column($apps, 'id'));
         foreach ($apps as &$a) {
-            $a['summary'] = $svc->autoRemark((int) $a['id']);
+            $a['summary'] = $remarks[(int) $a['id']] ?? '';
             $a['preselect'] = \Eshcol\Ats\Services\Stages::is($this->app, (int) $a['stage_id'], \Eshcol\Ats\Services\Stages::SHORTLISTED) && !$a['sent_before'];
         }
         $contact = $this->db->one('SELECT name, email FROM client_contacts WHERE client_id = ? AND email IS NOT NULL ORDER BY id LIMIT 1', [$role['client_id']]) ?: ['name' => '', 'email' => ''];

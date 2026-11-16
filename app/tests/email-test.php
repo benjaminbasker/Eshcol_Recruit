@@ -148,6 +148,36 @@ $m->transport = fn () => throw new \Eshcol\Ats\Services\MailError('Brevo said 40
 $bid = $m->enqueue(['kind' => 'ack', 'candidate_id' => $k1, 'to_email' => "kiran2.$tag@candidates.test", 'subject' => 'x', 'html' => 'x', 'text' => 'x', 'not_before' => date('Y-m-d H:i:s', time() - 60)]);
 $m->processQueue();
 $check('a bad address fails that one email only, without pausing the rest', $q($bid)['status'] === 'failed' && $m->keyProblem() === null);
+
+echo "\nAudit R5: Brevo may have taken it, but no answer came back\n";
+$check('which failures count as "unsure" (timeout, empty or cut-off reply, 504) and which do not', \Eshcol\Ats\Services\Mailer::unsureFailure(0, 28)
+    && \Eshcol\Ats\Services\Mailer::unsureFailure(0, 56) && \Eshcol\Ats\Services\Mailer::unsureFailure(504, 0)
+    && !\Eshcol\Ats\Services\Mailer::unsureFailure(0, 7) && !\Eshcol\Ats\Services\Mailer::unsureFailure(0, 6) && !\Eshcol\Ats\Services\Mailer::unsureFailure(500, 0));
+$tries = 0;
+$m->transport = function () use (&$tries) {
+    $tries++;
+    throw new \Eshcol\Ats\Services\MailError('Could not reach Brevo: Operation timed out', false, false, true);
+};
+$uid2 = $m->enqueue(['kind' => 'ack', 'candidate_id' => $k1, 'to_email' => "kiran3.$tag@candidates.test", 'subject' => 'x', 'html' => 'x', 'text' => 'x', 'not_before' => date('Y-m-d H:i:s', time() - 60)]);
+$m->processQueue();
+$db->run('UPDATE email_queue SET not_before = NOW() - INTERVAL 1 DAY WHERE id = ?', [$uid2]);
+$m->processQueue();
+$check('a timed-out send is marked "unsure" and never sent again by itself', $q($uid2)['status'] === 'unsure' && $tries === 1 && str_starts_with((string) $q($uid2)['last_error'], 'Brevo may have sent it'));
+$m->transport = function () {
+    throw new RuntimeException('database went away after Brevo took it');
+};
+$uid3 = $m->enqueue(['kind' => 'ack', 'candidate_id' => $k1, 'to_email' => "kiran4.$tag@candidates.test", 'subject' => 'x', 'html' => 'x', 'text' => 'x', 'not_before' => date('Y-m-d H:i:s', time() - 60)]);
+try {
+    $m->sendRow($q($uid3));
+} catch (RuntimeException) {
+}
+$check('a run that stops half-way leaves it "unsure", not queued to go again', $q($uid3)['status'] === 'unsure');
+$m->transport = fn () => 'brevo-msg-456';
+$check('a second run can\'t send an email another run has already taken', !$m->sendRow(['status' => 'pending'] + $q($uid3)) && $q($uid3)['status'] === 'unsure');
+$db->run("UPDATE email_queue SET status = 'pending', attempts = 0, not_before = NOW() WHERE id = ? AND status IN ('failed','unsure')", [$uid2]);
+$m->processQueue();
+$check('"Send again" (your choice) sends it', $q($uid2)['status'] === 'sent');
+$db->run("UPDATE email_queue SET status = 'cancelled' WHERE id = ?", [$uid3]);
 $m->transport = null;
 $db->run("DELETE FROM settings WHERE k IN ('mail_key_problem','mail_last_brevo_ok')");
 

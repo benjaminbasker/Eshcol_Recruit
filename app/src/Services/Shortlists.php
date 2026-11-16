@@ -176,17 +176,37 @@ final class Shortlists
     /** A short remark for the email table, from the screening answers (you can rewrite it). */
     public function autoRemark(int $applicationId): string
     {
+        return $this->autoRemarks([$applicationId])[$applicationId] ?? '';
+    }
+
+    /**
+     * autoRemark() for many applications in two requests (audit P1, 16 Nov 2026), not two or three each.
+     * @param list<int> $applicationIds
+     * @return array<int, string>
+     */
+    public function autoRemarks(array $applicationIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $applicationIds))));
+        if (!$ids) {
+            return [];
+        }
         $db = $this->app->db;
-        $c = $db->one('SELECT c.ctc_min_lpa, c.ctc_expected_lpa FROM applications a JOIN candidates c ON c.id = a.candidate_id WHERE a.id = ?', [$applicationId]);
-        $bits = [];
-        if ($c && $c['ctc_min_lpa'] !== null && (float) $c['ctc_min_lpa'] < (float) ($c['ctc_expected_lpa'] ?? 0)) {
-            $bits[] = 'Will consider ' . inr($c['ctc_min_lpa']);
+        $in = implode(',', $ids);
+        $bits = array_fill_keys($ids, []);
+        foreach ($db->all("SELECT a.id, c.ctc_min_lpa, c.ctc_expected_lpa FROM applications a JOIN candidates c ON c.id = a.candidate_id WHERE a.id IN ($in)") as $c) {
+            if ($c['ctc_min_lpa'] !== null && (float) $c['ctc_min_lpa'] < (float) ($c['ctc_expected_lpa'] ?? 0)) {
+                $bits[(int) $c['id']][] = 'Will consider ' . inr($c['ctc_min_lpa']);
+            }
         }
-        $q = $db->one("SELECT id FROM questionnaires WHERE application_id = ? AND status = 'answered' ORDER BY id DESC LIMIT 1", [$applicationId]);
-        if ($q && ($rel = $db->col("SELECT answer FROM questionnaire_answers WHERE questionnaire_id = ? AND qkey = 'relocate'", [$q['id']]))) {
-            $bits[] = $rel === 'Yes' ? 'Fine with the location' : 'Location is a concern';
+        // The relocation answer on each application's latest answered details request.
+        foreach ($db->all("SELECT q.application_id, qa.answer FROM questionnaires q
+                JOIN questionnaire_answers qa ON qa.questionnaire_id = q.id AND qa.qkey = 'relocate'
+                WHERE q.application_id IN ($in) AND q.id = (SELECT MAX(q2.id) FROM questionnaires q2 WHERE q2.application_id = q.application_id AND q2.status = 'answered')") as $r) {
+            if ((string) $r['answer'] !== '') {
+                $bits[(int) $r['application_id']][] = $r['answer'] === 'Yes' ? 'Fine with the location' : 'Location is a concern';
+            }
         }
-        return implode('. ', $bits);
+        return array_map(fn ($b) => implode('. ', $b), $bits);
     }
 
     /**

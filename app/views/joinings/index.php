@@ -26,7 +26,7 @@ use Eshcol\Ats\Services\Staffing;
         <td class="nowrap"><?= e(nice_date($r['joining_date'])) ?><?= !empty($p['job']['contract_end']) ? '<br><span class="small muted">to ' . e(nice_date($p['job']['contract_end'])) . '</span>' : '' ?></td>
         <td class="small"><?= isset($p['pay']['gross_month']) && $p['pay']['gross_month'] !== null ? '₹' . e(number_format((float) $p['pay']['gross_month'])) . ' a month' : e(lpa($p['pay']['annual_ctc_lpa'] ?? null)) ?>
           <?= $d && isset($d['margin_pct']) ? '<br><span class="muted">margin ' . e((string) $d['margin_pct']) . ' %</span>' : '' ?></td>
-        <td class="small"><?= count($p['documents'] ?? []) ?> of <?= count(Staffing::JOINING) ?></td>
+        <td class="small"><?= (int) $r['doc_n'] ?> of <?= count(Staffing::JOINING) ?></td>
         <td><span class="chip <?= ['ready' => 'flag', 'downloaded' => 'sand', 'imported' => 'yes', 'withdrawn' => ''][$r['status']] ?>" style="text-decoration:none"><?= e(Joinings::STATUS[$r['status']]) ?></span>
           <?= $r['downloaded_at'] ? '<br><span class="small muted">' . e(nice_date($r['downloaded_at'])) . '</span>' : '' ?></td>
         <td class="actions small">
@@ -41,4 +41,11 @@ use Eshcol\Ats\Services\Staffing;
       </tr>
     <?php endforeach; ?></tbody>
   </table></div>
+  <?php if (($pages ?? 1) > 1): $base = '/joinings?' . ($show !== 'open' ? 'show=' . $show . '&' : '') . 'page='; ?>
+    <p class="actions small" style="margin-top:12px">
+      <?php if ($page > 1): ?><a class="btn ghost small" href="<?= e($base . ($page - 1)) ?>">Previous</a><?php endif; ?>
+      <span class="muted">Page <?= (int) $page ?> of <?= (int) $pages ?></span>
+      <?php if ($page < $pages): ?><a class="btn ghost small" href="<?= e($base . ($page + 1)) ?>">Next</a><?php endif; ?>
+    </p>
+  <?php endif; ?>
 <?php endif; ?>
