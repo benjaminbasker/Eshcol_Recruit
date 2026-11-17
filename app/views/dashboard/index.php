@@ -154,10 +154,11 @@ $restAlerts = array_slice($alerts, 3); ?>
     <?php // B's Today: today's interviews by time, then the first few things waiting on you. ?>
     <section class="card">
       <div class="card-head"><h2><?= icon('clock') ?> Today</h2><span class="small muted"><?= e(date('D j M')) ?></span></div>
+      <?php prime_stages(array_merge(array_column($schedule, 'candidate_id'), array_column($recent ?? [], 'id'))); // stage tags on every list (17 Nov 2026) ?>
       <?php $todayIv = array_values(array_filter($schedule, fn ($s) => substr($s['starts_at'], 0, 10) === $today)); ?>
       <div class="timeline">
         <?php foreach ($todayIv as $s): ?>
-          <div class="t"><time><?= e(date('g:i a', strtotime($s['starts_at']))) ?></time>Interview: <a href="/candidates/<?= (int) $s['candidate_id'] ?>#interviews"><b><?= e($s['full_name']) ?></b></a> <span class="small muted">· <?= e($s['title']) ?>, round <?= (int) $s['round'] ?></span></div>
+          <div class="t"><time><?= e(date('g:i a', strtotime($s['starts_at']))) ?></time>Interview: <a href="/candidates/<?= (int) $s['candidate_id'] ?>#interviews"><b><?= e($s['full_name']) ?></b></a> <?= stage_tags($s['candidate_id']) ?> <span class="small muted">· <?= e($s['title']) ?>, round <?= (int) $s['round'] ?></span></div>
         <?php endforeach; ?>
         <?php foreach (array_slice($todo, 0, $todayIv ? 3 : 5) as $t): ?>
           <div class="t any"><time>Today</time><?= e($t['title']) ?> <a class="small" href="<?= e($t['url']) ?>"><?= e($t['cta']) ?></a></div>
@@ -177,7 +178,7 @@ $restAlerts = array_slice($alerts, 3); ?>
             <li>
               <span class="t"><?= e(date('H:i', strtotime($s['starts_at']))) ?></span>
               <div style="flex:1;min-width:0">
-                <a href="/candidates/<?= $s['candidate_id'] ?>#interviews"><b><?= e($s['full_name']) ?></b></a>
+                <a href="/candidates/<?= $s['candidate_id'] ?>#interviews"><b><?= e($s['full_name']) ?></b></a> <?= stage_tags($s['candidate_id']) ?>
                 <div class="small muted"><?= icon($kindIcon[$s['kind']] ?? 'calendar', 'sm') ?> Round <?= (int) $s['round'] ?> · <?= e($s['title']) ?> · <?= e($s['client']) ?></div>
               </div>
             </li>
@@ -195,7 +196,7 @@ $restAlerts = array_slice($alerts, 3); ?>
         <a href="/candidates/<?= $c['id'] ?>" style="display:flex;gap:10px;align-items:center;padding:7px 0;color:inherit;text-decoration:none">
           <span class="avatar sm" style="--h:<?= avatar_hue($nm) ?>"><?= e(initials($nm)) ?></span>
           <span style="flex:1;min-width:0"><b style="font-weight:600"><?= e($nm) ?></b><br>
-            <span class="small muted"><?= e(experience(exp_now($c))) ?><?= $c['location'] ? ' · ' . e($c['location']) : '' ?></span></span>
+            <span class="small muted"><?= e(experience(exp_now($c))) ?><?= $c['location'] ? ' · ' . e($c['location']) : '' ?></span><?= ($st = stage_tags($c['id'])) ? '<br>' . $st : '' ?></span>
           <span class="small muted nowrap"><?= e(nice_date($c['created_at'])) ?></span>
         </a>
       <?php endforeach; ?>

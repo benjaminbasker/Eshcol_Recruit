@@ -15,10 +15,10 @@ $upcoming = array_filter($ivs, fn ($i) => in_array($i['status'], ['choosing', 'b
   </div>
   <?php if ($upcoming): ?>
     <div class="iv-list">
-      <?php foreach ($upcoming as $i): ?>
+      <?php prime_stages(array_column($upcoming, 'candidate_id')); foreach ($upcoming as $i): ?>
         <div class="iv-row">
           <span class="iv-when"><?= $i['starts_at'] ? '<b>' . date('D j M', strtotime($i['starts_at'])) . '</b><br>' . date('g:i A', strtotime($i['starts_at'])) : '<span class="muted">choosing</span>' ?></span>
-          <div><a href="/candidates/<?= (int) $i['candidate_id'] ?>#interviews"><b><?= e($i['full_name']) ?></b></a> <span class="ref small"><?= ref_interview($i['id']) ?></span>
+          <div><a href="/candidates/<?= (int) $i['candidate_id'] ?>#interviews"><b><?= e($i['full_name']) ?></b></a> <?= stage_tags($i['candidate_id'], (int) $role['id']) ?> <span class="ref small"><?= ref_interview($i['id']) ?></span>
             <br><span class="small muted">Round <?= (int) $i['round'] ?> · <?= e($kinds[$i['kind']]) ?> · <?= $i['status'] === 'booked' ? 'confirmed' . ($i['reminded_at'] ? ', reminded' : '') : 'invited to choose a time' ?></span></div>
         </div>
       <?php endforeach; ?>

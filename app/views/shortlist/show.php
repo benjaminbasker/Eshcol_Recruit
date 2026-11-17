@@ -20,8 +20,8 @@
 </div>
 <div class="table-wrap"><table class="list">
   <thead><tr><th>Candidate</th><th>Client's decision</th><th>Comment</th></tr></thead>
-  <tbody><?php foreach ($items as $it): ?>
-    <tr><td><a href="/candidates/<?= (int) $it['candidate_id'] ?>"><b><?= e($it['p']['name'] ?? 'Candidate') ?></b></a><?= $it['summary'] ? '<br><span class="small muted">' . e(mb_strimwidth($it['summary'], 0, 140, '…')) . '</span>' : '' ?></td>
+  <tbody><?php prime_stages(array_column($items, 'candidate_id')); foreach ($items as $it): ?>
+    <tr><td><a href="/candidates/<?= (int) $it['candidate_id'] ?>"><b><?= e($it['p']['name'] ?? 'Candidate') ?></b></a> <?= stage_tags($it['candidate_id'], isset($s['role_id']) ? (int) $s['role_id'] : null) ?><?= $it['summary'] ? '<br><span class="small muted">' . e(mb_strimwidth($it['summary'], 0, 140, '…')) . '</span>' : '' ?></td>
       <td class="nowrap"><?= $it['decision'] ? '<span class="chip ' . $cls[$it['decision']] . '">' . e($labels[$it['decision']]) . '</span><br><span class="small muted">' . e(nice_date($it['decided_at'], true)) . '</span>' : '<span class="muted">waiting</span>' ?></td>
       <td><?= e((string) $it['comment']) ?></td></tr>
   <?php endforeach; ?></tbody>

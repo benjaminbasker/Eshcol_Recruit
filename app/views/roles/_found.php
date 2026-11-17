@@ -22,10 +22,10 @@ $else = $found['elsewhere'];
     <form method="post" action="/roles/<?= (int) $role['id'] ?>/found" id="found-add"><?= csrf() ?></form>
     <div class="table-wrap" style="margin-top:12px"><table class="list compact">
       <thead><tr><th><span class="visually-hidden">Tick</span></th><th>Candidate</th><th>Why they fit</th><th><span class="visually-hidden">Not this one</span></th></tr></thead>
-      <tbody><?php foreach ($fits as $p): ?>
+      <tbody><?php prime_stages(array_merge(array_column($fits, 'id'), array_column($else ?? [], 'id'))); foreach ($fits as $p): ?>
         <tr>
           <td><input type="checkbox" name="ids[]" value="<?= (int) $p['id'] ?>" form="found-add" aria-label="Tick <?= e($p['full_name'] ?: 'candidate') ?>"></td>
-          <td><a href="/candidates/<?= (int) $p['id'] ?>"><b><?= e($p['full_name'] ?: 'Name not found') ?></b></a> <span class="small muted"><?= e(ref_candidate((int) $p['id'])) ?></span><br><span class="small"><?= $person($p) ?></span></td>
+          <td><a href="/candidates/<?= (int) $p['id'] ?>"><b><?= e($p['full_name'] ?: 'Name not found') ?></b></a> <span class="small muted"><?= e(ref_candidate((int) $p['id'])) ?></span> <?= stage_tags($p['id']) ?><br><span class="small"><?= $person($p) ?></span></td>
           <td class="small"><?= $p['in_band'] ? 'In the experience band' : 'Within the allowance' ?><?= $p['why'] !== '' ? ' · ' . e($p['why']) : '' ?><?= $p['cat_source'] === 'recruiter' ? ' · category checked by you' : ($p['confidence'] === 'low' ? ' · category unsure' : '') ?></td>
           <td><form method="post" action="/roles/<?= (int) $role['id'] ?>/found" style="margin:0"><?= csrf() ?><input type="hidden" name="action" value="dismiss"><input type="hidden" name="candidate_id" value="<?= (int) $p['id'] ?>"><button class="btn ghost small" type="submit">Not this one</button></form></td>
         </tr>
@@ -40,7 +40,7 @@ $else = $found['elsewhere'];
   <?php if ($else): ?>
     <details style="margin-top:14px"><summary class="small"><b>Living elsewhere (<?= count($else) ?>)</b>: right field and experience, but this position takes local candidates only</summary>
       <ul class="small" style="margin:8px 0 0;padding-left:18px">
-        <?php foreach ($else as $p): ?><li><a href="/candidates/<?= (int) $p['id'] ?>"><?= e($p['full_name'] ?: 'Name not found') ?></a>: <?= $person($p) ?></li><?php endforeach; ?>
+        <?php foreach ($else as $p): ?><li><a href="/candidates/<?= (int) $p['id'] ?>"><?= e($p['full_name'] ?: 'Name not found') ?></a> <?= stage_tags($p['id']) ?>: <?= $person($p) ?></li><?php endforeach; ?>
       </ul>
       <p class="small muted" style="margin:8px 0 0">If the client would take someone who relocates, change "Who can we consider?" on the position, or add a person from their page.</p>
     </details>

@@ -35,6 +35,7 @@ final class SearchController extends Controller
         $cands = $this->db->all('SELECT id, full_name, current_title FROM candidates WHERE (full_name LIKE ? OR email_norm LIKE ?' .
             (strlen($digits) >= 6 ? ' OR phone_norm LIKE ?' : '') . ')' . $cf . ' ORDER BY updated_at DESC LIMIT 6',
             array_merge([$like, mb_strtolower($like)], strlen($digits) >= 6 ? ['%' . $digits . '%'] : []));
+        prime_stages(array_column($cands, 'id'));
         foreach ($cands as $c) {
             $out[] = $this->cand($c);
         }
@@ -68,7 +69,7 @@ final class SearchController extends Controller
     private function cand(array $c): array
     {
         return ['group' => 'Candidates', 'icon' => 'user', 'title' => ($c['full_name'] ?: 'Unnamed candidate'), 'ref' => ref_candidate($c['id']),
-                'sub' => (string) ($c['current_title'] ?? ''), 'url' => '/candidates/' . $c['id']];
+                'sub' => implode(' · ', array_filter([(string) ($c['current_title'] ?? ''), \Eshcol\Ats\Services\KeyFacts::stagesText($this->app, (int) $c['id'])])), 'url' => '/candidates/' . $c['id']];
     }
 
     private function role(array $r): array

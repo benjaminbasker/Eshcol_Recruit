@@ -26,10 +26,10 @@ $kinds = ['ack' => 'Thank-you', 'test' => 'Test', 'interview' => 'Interview', 'r
     <thead><tr>
       <?php if ($tab === 'held' && ($user['role'] ?? '') === 'owner'): ?><th style="width:34px"><input type="checkbox" data-all aria-label="Select all"></th><?php endif; ?>
       <th>To</th><th>Email</th><th><?= $tab === 'held' ? 'Why it waits' : ($tab === 'sent' ? 'Sent' : ($tab === 'failed' || $tab === 'unsure' ? 'Problem' : 'Goes after')) ?></th><th></th></tr></thead>
-    <tbody><?php foreach ($rows as $r): ?>
+    <tbody><?php prime_stages(array_column($rows, 'candidate_id')); foreach ($rows as $r): ?>
       <tr>
         <?php if ($tab === 'held' && ($user['role'] ?? '') === 'owner'): ?><td><input type="checkbox" name="ids[]" value="<?= (int) $r['id'] ?>" aria-label="Select"></td><?php endif; ?>
-        <td><?php if ($r['candidate_id']): ?><a href="/candidates/<?= (int) $r['candidate_id'] ?>"><b><?= e($r['full_name'] ?: $r['to_name'] ?: 'Candidate') ?></b></a><?php else: ?><b><?= e($r['to_name'] ?: '–') ?></b><?php endif; ?>
+        <td><?php if ($r['candidate_id']): ?><a href="/candidates/<?= (int) $r['candidate_id'] ?>"><b><?= e($r['full_name'] ?: $r['to_name'] ?: 'Candidate') ?></b></a> <?= stage_tags($r['candidate_id']) ?><?php else: ?><b><?= e($r['to_name'] ?: '–') ?></b><?php endif; ?>
           <br><span class="small muted"><?= e($r['to_email']) ?></span></td>
         <td><span class="chip"><?= e($kinds[$r['kind']] ?? ucfirst($r['kind'])) ?></span> <?= e($r['subject']) ?></td>
         <td class="small"><?= $tab === 'held' ? e(ucfirst((string) $r['hold_reason'])) : ($tab === 'sent' ? e(nice_date($r['sent_at'], true)) : ($tab === 'failed' || $tab === 'unsure' ? e((string) $r['last_error']) : e(nice_date($r['not_before'], true)))) ?></td>

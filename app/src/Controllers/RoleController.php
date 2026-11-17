@@ -104,7 +104,7 @@ final class RoleController extends Controller
             }
             unset($st);
         }
-        $stageFilter = (int) ($_GET['stage'] ?? 0);
+        $stageFilter = in_array($_GET['who'] ?? '', ['responded', 'waiting', 'short', 'found'], true) ? 0 : (int) ($_GET['stage'] ?? 0); // the reply tabs need everyone
         $apps = $this->db->all('
             SELECT a.*, COALESCE(a.override_score, a.score) AS eff_score, s.name AS stage, s.kind AS stage_kind,
                    c.full_name, c.location, c.exp_months, c.exp_as_of, c.notice_days, c.ctc_expected_lpa, c.ctc_min_lpa, c.field_sources, c.do_not_contact, c.unreliable_at, c.unreliable_reason, c.unreliable_note,

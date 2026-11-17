@@ -894,3 +894,17 @@ a.db-kpi:hover { text-decoration: none; box-shadow: 0 0 0 2px #FFB85C; }
 .stage-tabs a.on { border-color: #1F1147; box-shadow: 0 0 0 2px #fff inset, 0 2px 8px rgba(31, 17, 71, .25); opacity: 1; }
 .btn.cv-btn { padding: 3px 9px; font-size: 12px; }
 .btn.cv-btn .i { color: var(--c6); }
+
+/* Responded / Yet to respond tabs (17 Nov 2026) */
+.who-tabs { margin-bottom: 8px; }
+.who-tabs a { font-size: 13.5px; padding: 7px 16px; }
+.who-tabs a.w-resp { background: linear-gradient(135deg, #1E8E5A, #2BB673); color: #fff; }
+.who-tabs a.w-wait { background: linear-gradient(135deg, #D9822B, #F2B33D); color: #2B1700; }
+.who-tabs a.w-all { background: linear-gradient(135deg, #5B3FB4, #8A6BE0); color: #fff; }
+.rank-n { display: inline-block; font-weight: 800; font-size: 12px; color: #5B3FB4; margin-bottom: 2px; }
+.stage-tags { display: inline; }.who-tabs a.w-short { background: linear-gradient(135deg, #0F7A4A, #19A974); color: #fff; }
+.who-tabs a.w-found { background: linear-gradient(135deg, #1565C0, #3A8DDE); color: #fff; }
+.who-tabs { padding-bottom: 10px; border-bottom: 2px solid var(--line, #E6E1EF); margin-bottom: 12px; }
+.sub-tabs { margin: 0 0 10px; }
+.sub-tabs a { font-size: 12px; padding: 4px 11px; }
+.kw-tag { display: block; font-size: 10.5px; color: #8A8398; font-weight: 600; margin-top: 2px; }

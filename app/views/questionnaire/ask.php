@@ -31,9 +31,9 @@ $askKf = (new \Eshcol\Ats\Services\KeyFacts(\Eshcol\Ats\App::get()))->forCandida
     <p class="small muted" style="margin:-4px 0 8px">Salaries in lakhs per annum. Within budget first; ⚑ marks something to look at.</p>
     <div class="table-wrap"><table class="list compact">
       <thead><tr><th>Candidate</th><th>Role</th><th>Current</th><th>Lowest</th><th>Hoping</th><th>Can join</th><th>Lives in</th><th>Can work there</th><th>Answered</th><th>Your review</th></tr></thead>
-      <tbody><?php foreach ($answered as $r): $over = $r['ctc_max_lpa'] !== null && $r['ctc_min_lpa'] !== null && (float) $r['ctc_min_lpa'] > (float) $r['ctc_max_lpa']; ?>
+      <tbody><?php prime_stages(array_merge(array_column($answered, 'candidate_id'), array_column($waiting ?? [], 'candidate_id'))); foreach ($answered as $r): $over = $r['ctc_max_lpa'] !== null && $r['ctc_min_lpa'] !== null && (float) $r['ctc_min_lpa'] > (float) $r['ctc_max_lpa']; ?>
         <tr>
-          <td><a href="/candidates/<?= (int) $r['candidate_id'] ?>"><b><?= e($r['full_name'] ?: 'Candidate') ?></b></a> <span class="small muted"><?= e(ref_candidate((int) $r['candidate_id'])) ?></span>
+          <td><a href="/candidates/<?= (int) $r['candidate_id'] ?>"><b><?= e($r['full_name'] ?: 'Candidate') ?></b></a> <span class="small muted"><?= e(ref_candidate((int) $r['candidate_id'])) ?></span> <?= stage_tags($r['candidate_id']) ?>
             <?php $ak = $askKf[(int) $r['candidate_id']] ?? []; if ($ak): ?><br><?= \Eshcol\Ats\Services\KeyFacts::line($ak, ['place', 'ctc', 'notice', 'responded']) ?> <?= \Eshcol\Ats\Services\KeyFacts::cvButton($ak) ?><?php endif; ?>
             <?php foreach ($r['flags'] as $fl): ?><br><span class="chip flag">⚑ <?= e($fl) ?></span><?php endforeach; ?>
             <?php if (in_array($r['stage_kind'], ['fail', 'hold'], true)): ?><br><span class="chip <?= $r['stage_kind'] === 'hold' ? 'keep' : 'reason' ?>"><?= e($r['stage_name']) ?>: <?= e($r['stage_reason'] ?: ($r['stage_kind'] === 'hold' ? 'no note yet' : 'no reason given')) ?></span><?php endif; ?></td>
@@ -61,7 +61,7 @@ $askKf = (new \Eshcol\Ats\Services\KeyFacts(\Eshcol\Ats\App::get()))->forCandida
     <div class="table-wrap" style="margin-top:8px"><table class="list compact">
       <thead><tr><th>Candidate</th><th>Role</th><th>Asked</th><th>Progress</th></tr></thead>
       <tbody><?php foreach ($waiting as $r): ?>
-        <tr><td><a href="/candidates/<?= (int) $r['candidate_id'] ?>"><?= e($r['full_name'] ?: 'Candidate') ?></a> <span class="small muted"><?= e(ref_candidate((int) $r['candidate_id'])) ?></span>
+        <tr><td><a href="/candidates/<?= (int) $r['candidate_id'] ?>"><?= e($r['full_name'] ?: 'Candidate') ?></a> <span class="small muted"><?= e(ref_candidate((int) $r['candidate_id'])) ?></span> <?= stage_tags($r['candidate_id']) ?>
           <?php $ak = $askKf[(int) $r['candidate_id']] ?? []; if ($ak): ?><br><?= \Eshcol\Ats\Services\KeyFacts::line($ak, ['responded']) ?> <?= \Eshcol\Ats\Services\KeyFacts::cvButton($ak) ?><?php endif; ?></td>
           <td class="small"><?= e($r['title']) ?></td>
           <td class="small nowrap"><?= e(nice_date($r['created_at'])) ?></td>
@@ -81,10 +81,10 @@ $askKf = (new \Eshcol\Ats\Services\KeyFacts(\Eshcol\Ats\App::get()))->forCandida
   <form method="post" action="/details-requests"><?= csrf() ?>
   <div class="table-wrap"><table class="list">
     <thead><tr><th style="width:34px"><input type="checkbox" data-all aria-label="Select all"></th><th>Candidate</th><th>Roles</th><th>Status</th></tr></thead>
-    <tbody><?php foreach ($people as $p): $c = $p['candidate']; $can = !$c['blocked'] && !$p['asked']; ?>
+    <tbody><?php prime_stages(array_map(fn ($x) => $x['candidate']['id'], $people)); foreach ($people as $p): $c = $p['candidate']; $can = !$c['blocked'] && !$p['asked']; ?>
       <tr<?= $can ? '' : ' class="muted"' ?>>
         <td><?php if ($can): ?><input type="checkbox" name="cand[]" value="<?= (int) $c['id'] ?>" aria-label="Ask <?= e($c['full_name'] ?: 'this candidate') ?>"<?= $p['relevant'] ? ' checked' : '' ?>><?php endif; ?></td>
-        <td><a href="/candidates/<?= (int) $c['id'] ?>"><b><?= e($c['full_name'] ?: 'Candidate') ?></b></a> <span class="small muted"><?= e(ref_candidate((int) $c['id'])) ?></span><br><span class="small muted"><?= e($c['email'] ?: 'no email address') ?></span></td>
+        <td><a href="/candidates/<?= (int) $c['id'] ?>"><b><?= e($c['full_name'] ?: 'Candidate') ?></b></a> <span class="small muted"><?= e(ref_candidate((int) $c['id'])) ?></span> <?= stage_tags($c['id']) ?><br><span class="small muted"><?= e($c['email'] ?: 'no email address') ?></span></td>
         <td class="small"><?php foreach ($p['apps'] as $a): ?><div><?= e(role_title_mode($a['title'], $a['work_mode'])) ?> <?= $a['relevant'] ? '<span class="chip yes">relevant</span>' : '<span class="chip">not relevant</span>' ?></div><?php endforeach; ?></td>
         <td class="small"><?= $c['blocked'] ? 'Can\'t be contacted' : e($status[(string) $p['asked']] ?? ($p['asked'] ? ucfirst($p['asked']) : 'Not asked yet')) ?></td>
       </tr>

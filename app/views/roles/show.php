@@ -15,6 +15,18 @@ $isShort = fn (array $a): bool => \Eshcol\Ats\Services\Shortlists::isShortlisted
 // The same key details on every list (16 Nov 2026), for everyone on the position, in one go.
 $kfMap = (new \Eshcol\Ats\Services\KeyFacts(\Eshcol\Ats\App::get()))->forCandidates(array_column($all, 'candidate_id'));
 $kfOf = fn (array $a): array => $kfMap[(int) $a['candidate_id']] ?? [];
+// Responded / Yet to respond, ranked (17 Nov 2026): "responded" = answered the details request or wrote back to us;
+// "yet to respond" = asked or written to, no answer yet. Ranked by Claude's assessment, else the keyword score.
+// Closed stages (Not suitable, Withdrawn, No response, Future requirement) are left out and counted.
+$fitRowsAll = $fit['rows'];
+$rankScore = fn (array $a): ?int => \Eshcol\Ats\Services\KeyFacts::rankScore($a, $fit['rows']);
+['responded' => $responded, 'waiting' => $waitingList, 'closed' => $closedOut] = \Eshcol\Ats\Services\KeyFacts::replyLists($all, $kfMap, $fit['rows']);
+// The main tab: Responded opens first when nothing else was asked for and someone has responded.
+$shortN = $isPool ? 0 : count((new \Eshcol\Ats\Services\Shortlists(\Eshcol\Ats\App::get()))->shortlistedOn((int) $role['id']));
+$foundN = count($found['fits'] ?? []);
+$who = in_array($_GET['who'] ?? '', ['responded', 'waiting', 'short', 'found'], true) ? $_GET['who']
+    : (!$isPool && !isset($_GET['view']) && !$stageFilter && $responded ? 'responded' : '');
+if ($who) { $view = 'list'; }
 $qChip = function (?array $q, int $candidateId): string {
     if (!$q) { return ''; }
     $flags = json_decode((string) $q['flags'], true) ?: [];
@@ -58,13 +70,15 @@ $fitChip = function (array $a) use ($fit, $sentToClient): string {
         ? ' <span class="chip sand" title="The position\'s requirements changed after this assessment: press Re-assess everyone on the Claude tab">role changed</span>' : '';
     return $sentChip . $staleChip . '<span class="chip ' . (['Strong' => 'yes', 'Possible' => 'sand', 'Weak' => 'no'][$f['band']] ?? '') . '" style="text-decoration:none" title="Assessed by Claude">Claude ' . (int) $f['score'] . ' · ' . e($f['band']) . '</span>';
 };
-$row = function (array $a) use ($stages, $role, $qs, $clientDecisions, $notice, $qChip, $fitChip, $isShort, $kfOf): string {
+$row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientDecisions, $notice, $qChip, $fitChip, $isShort, $kfOf, $rankScore, $fitRowsAll): string {
+    // In a ranked list the score shown is the one it is ranked by (Claude's, else the keyword score).
+    $sc = $rank !== null ? $rankScore($a) : ($a['eff_score'] !== null ? (int) $a['eff_score'] : null);
     $cd = $clientDecisions[(int) $a['id']] ?? null;
     $q = $qs[(int) $a['id']] ?? null;
     $nm = $a['full_name'] ?: 'Name not found';
     ob_start(); ?>
     <tr<?= $isShort($a) ? ' class="short" title="Shortlisted"' : '' ?>>
-      <td style="width:64px"><span class="score <?= score_class($a['eff_score'] !== null ? (int) $a['eff_score'] : null, (int) $role['score_threshold']) ?>"><?= $a['eff_score'] ?? '–' ?></span>
+      <td style="width:64px"><?php if ($rank !== null): ?><span class="rank-n" title="Rank by Claude's assessment">#<?= $rank ?></span><br><?php endif; ?><span class="score <?= score_class($sc, (int) $role['score_threshold']) ?>"><?= $sc ?? '–' ?></span><?php if ($rank !== null && !\Eshcol\Ats\Services\KeyFacts::byClaude($a, $fitRowsAll)): ?><span class="kw-tag" title="Claude hasn't assessed them for this position: keyword score">keyword</span><?php endif; ?>
         <?php if ($a['override_score'] !== null): ?><br><span class="small muted" title="<?= e($a['override_reason']) ?>">set by you</span><?php endif; ?></td>
       <td>
         <div style="display:flex;gap:10px;align-items:flex-start">
@@ -171,37 +185,7 @@ $row = function (array $a) use ($stages, $role, $qs, $clientDecisions, $notice, 
   <div class="tile"><b><?= $openDays ?> day<?= $openDays === 1 ? '' : 's' ?></b><span>Open for</span></div>
   <div class="tile"><b><?= $topScore ?? '–' ?></b><span>Top match</span></div>
 </div>
-<?php if ($likely): ?>
-<section class="card top-cands">
-  <div class="card-head"><h2><?= icon('star') ?> Top candidates</h2><span class="small muted">by Claude's assessment · <?= count($likely) > 5 ? 'top 5 of ' . count($likely) : count($likely) ?></span></div>
-  <?php foreach (array_slice($likely, 0, 5) as $a):
-    $fr = $fitRows[(int) $a['id']];
-    $sc = (int) $fr['score'];
-    $want = $a['ctc_min_lpa'] ?? $a['ctc_expected_lpa'];
-    $q = $qs[(int) $a['id']] ?? null;
-    $sent = ($sentToClient ?? [])[(int) $a['candidate_id']] ?? null;
-    $risk = $budget !== null && $want !== null && (float) $want > $budget;
-    $noDetails = $want === null || $a['notice_days'] === null; ?>
-    <div class="topc">
-      <span class="ring <?= $sc >= 75 ? 'r-hi' : 'r-mid' ?>" style="--p:<?= $sc ?>%"><em><?= $sc ?></em></span>
-      <div class="tx">
-        <a href="/candidates/<?= (int) $a['candidate_id'] ?>?role=<?= (int) $role['id'] ?>"><b><?= e($a['full_name'] ?: 'Name not found') ?></b></a> <span class="ref"><?= ref_candidate($a['candidate_id']) ?></span>
-        <div class="m"><?= $kfOf($a) ? \Eshcol\Ats\Services\KeyFacts::line($kfOf($a)) : '' ?> <?= \Eshcol\Ats\Services\KeyFacts::stageChip((string) $a['stage'], (string) ($a['stage_kind'] ?? '')) ?> <?= $kfOf($a) ? \Eshcol\Ats\Services\KeyFacts::cvButton($kfOf($a)) : '' ?></div>
-        <span class="chip2 <?= $fr['band'] === 'Strong' ? 'c-green' : 'c-gold' ?>"><?= e($fr['band']) ?></span>
-        <?php if ($want !== null && $budget !== null): ?><span class="chip2 <?= $risk ? 'c-red' : 'c-green' ?>"><?= $risk ? 'Salary risk: above ' . e(lpa($budget)) : 'Within budget' ?></span><?php endif; ?>
-        <?php if ($a['notice_days'] !== null && (int) $a['notice_days'] <= 15): ?><span class="chip2 c-grape">Joins quickly</span><?php endif; ?>
-        <?php if ($sent): ?><span class="chip2 c-grape">Sent <?= e(date('j M', strtotime((string) $sent))) ?></span><?php endif; ?>
-        <?php if ($noDetails): ?><span class="chip2 c-blue"><?= $q && in_array($q['status'] ?? '', ['sent', 'opened'], true) ? 'Waiting for their details' : 'Details not asked yet' ?></span><?php endif; ?>
-      </div>
-      <?php if ($sent): ?><a class="btn ghost small" href="/candidates/<?= (int) $a['candidate_id'] ?>?role=<?= (int) $role['id'] ?>">Open</a>
-      <?php elseif ($noDetails): ?><a class="btn ghost small" href="/candidates/<?= (int) $a['candidate_id'] ?>?role=<?= (int) $role['id'] ?>#their-details">Ask for details</a>
-      <?php elseif ($risk): ?><a class="btn ghost small" href="/candidates/<?= (int) $a['candidate_id'] ?>?role=<?= (int) $role['id'] ?>">Call first</a>
-      <?php elseif (\Eshcol\Ats\Services\Engagement::of($role) === 'inhouse'): ?><a class="btn small" href="/candidates/<?= (int) $a['candidate_id'] ?>?role=<?= (int) $role['id'] ?>#interviews">Invite to interview</a>
-      <?php else: ?><a class="btn small" href="/roles/<?= (int) $role['id'] ?>/shortlist/new">Add to a shortlist</a><?php endif; ?>
-    </div>
-  <?php endforeach; ?>
-</section>
-<?php endif; ?>
+<?php // Top candidates was folded into the Responded / Yet to respond tabs below (17 Nov 2026): the same ranking, one table. ?>
 <?php endif; ?>
 
 <?php if (!empty($toClarify) && in_array($role['status'], ['open', 'draft', 'on_hold'], true) && !\Eshcol\Ats\Access::restricted($user ?? null)): ?>
@@ -219,9 +203,23 @@ $row = function (array $a) use ($stages, $role, $qs, $clientDecisions, $notice, 
 </nav>
 
 <section class="tab-panel" id="tab-pipeline" data-panel="pipeline">
-  <?php if (!$isPool) { include __DIR__ . '/_shortlisted.php'; } ?>
-  <?php if (!empty($found) && ($found['fits'] || $found['elsewhere'])) { include __DIR__ . '/_found.php'; } ?>
-  <?php if (!$apps && !$below && !$stageFilter): ?>
+  <?php // One candidate table with tabs (17 Nov 2026): Responded, Yet to respond, Shortlisted, Found in database, Everyone.
+  $tabUrl = fn (string $w): string => '/roles/' . (int) $role['id'] . '?who=' . $w . '#tab-pipeline'; ?>
+  <nav class="stage-tabs who-tabs" aria-label="Candidates">
+    <a href="<?= $tabUrl('responded') ?>" class="w-resp<?= $who === 'responded' ? ' on' : '' ?><?= $responded ? '' : ' zero' ?>"<?= $who === 'responded' ? ' aria-current="page"' : '' ?>>✓ Responded, ranked <b>(<?= count($responded) ?>)</b></a>
+    <a href="<?= $tabUrl('waiting') ?>" class="w-wait<?= $who === 'waiting' ? ' on' : '' ?><?= $waitingList ? '' : ' zero' ?>"<?= $who === 'waiting' ? ' aria-current="page"' : '' ?>>✉ Yet to respond, ranked <b>(<?= count($waitingList) ?>)</b></a>
+    <?php if (!$isPool): ?>
+      <a href="<?= $tabUrl('short') ?>" class="w-short<?= $who === 'short' ? ' on' : '' ?><?= $shortN ? '' : ' zero' ?>"<?= $who === 'short' ? ' aria-current="page"' : '' ?>>✓ Shortlisted <b>(<?= $shortN ?>)</b></a>
+      <?php if (!empty($found)): ?><a href="<?= $tabUrl('found') ?>" class="w-found<?= $who === 'found' ? ' on' : '' ?><?= $foundN ? '' : ' zero' ?>"<?= $who === 'found' ? ' aria-current="page"' : '' ?>>🔍 Found in database <b>(<?= $foundN ?>)</b></a><?php endif; ?>
+    <?php endif; ?>
+    <a href="/roles/<?= (int) $role['id'] ?>?view=board#tab-pipeline" class="w-all<?= !$who ? ' on' : '' ?>"<?= !$who ? ' aria-current="page"' : '' ?>>Everyone, by stage <b>(<?= $total ?>)</b></a>
+  </nav>
+  <?php if ($who === 'short'): ?>
+    <?php include __DIR__ . '/_shortlisted.php'; ?>
+    <?php if (!$shortN): ?><div class="card empty">Nobody is shortlisted yet. Move someone to Shortlisted and they appear here, ready to send to the client.</div><?php endif; ?>
+  <?php elseif ($who === 'found'): ?>
+    <?php if (!empty($found) && ($found['fits'] || $found['elsewhere'])) { include __DIR__ . '/_found.php'; } else { echo '<div class="card empty">Nobody else on file fits this position\'s field, experience and location right now.</div>'; } ?>
+  <?php elseif (!$apps && !$below && !$stageFilter): ?>
     <div class="card empty">
       <?= icon('users') ?>
       <h3>No candidates on this role yet</h3>
@@ -229,17 +227,17 @@ $row = function (array $a) use ($stages, $role, $qs, $clientDecisions, $notice, 
       <p class="actions" style="justify-content:center"><a class="btn" href="/upload?role=<?= $role['id'] ?>"><?= icon('upload') ?>Upload CVs</a><a class="btn ghost" href="/roles/<?= $role['id'] ?>/matches"><?= icon('search') ?>Find in your database</a></p>
     </div>
   <?php else: ?>
-    <?php // Stage tabs with the numbers (16 Nov 2026): every stage, so you can see exactly where everyone is; a click lists them. ?>
+    <?php if (!$who): // Stage tabs with the numbers (16 Nov 2026): every stage, so you can see exactly where everyone is; a click lists them. ?>
     <nav class="stage-tabs" aria-label="Candidates by stage">
-      <a href="/roles/<?= $role['id'] ?>?view=list#tab-pipeline" class="st-all<?= !$stageFilter && $view === 'list' ? ' on' : '' ?>"<?= !$stageFilter && $view === 'list' ? ' aria-current="page"' : '' ?>>All <b>(<?= $total ?>)</b></a>
+      <a href="/roles/<?= $role['id'] ?>?view=list#tab-pipeline" class="st-all<?= !$who && !$stageFilter && $view === 'list' ? ' on' : '' ?>"<?= !$who && !$stageFilter && $view === 'list' ? ' aria-current="page"' : '' ?>>All <b>(<?= $total ?>)</b></a>
       <?php foreach ($stages as $s): $n = (int) ($counts[$s['id']] ?? 0); $on = $stageFilter === (int) $s['id']; ?>
         <a href="/roles/<?= $role['id'] ?>?view=list&amp;stage=<?= $s['id'] ?>#tab-pipeline" class="<?= \Eshcol\Ats\Services\KeyFacts::stageTone((string) $s['name'], (string) $s['kind']) ?><?= $on ? ' on' : '' ?><?= $n ? '' : ' zero' ?>"<?= $on ? ' aria-current="page"' : '' ?>><?= e($s['name']) ?> <b>(<?= $n ?>)</b></a>
       <?php endforeach; ?>
     </nav>
     <div class="actions" style="justify-content:space-between;margin-bottom:12px">
       <div class="seg" role="group" aria-label="View">
-        <a href="/roles/<?= $role['id'] ?>?view=board#tab-pipeline" class="<?= $view === 'board' ? 'on' : '' ?>"><?= icon('columns', 'sm') ?>Board</a>
-        <a href="/roles/<?= $role['id'] ?>?view=list#tab-pipeline" class="<?= $view === 'list' ? 'on' : '' ?>"><?= icon('list', 'sm') ?>List</a>
+        <a href="/roles/<?= $role['id'] ?>?view=board#tab-pipeline" class="<?= !$who && $view === 'board' ? 'on' : '' ?>"><?= icon('columns', 'sm') ?>Board</a>
+        <a href="/roles/<?= $role['id'] ?>?view=list#tab-pipeline" class="<?= !$who && $view === 'list' ? 'on' : '' ?>"><?= icon('list', 'sm') ?>List</a>
       </div>
       <?php if ($view === 'board'): ?>
         <span class="small muted">Drag a card to move the candidate to that stage. Faded cards are below the threshold. A grey dashed ring is the keyword score only: Claude hasn't assessed them for this position.</span>
@@ -247,8 +245,36 @@ $row = function (array $a) use ($stages, $role, $qs, $clientDecisions, $notice, 
         <span class="small muted">Showing only <?= e((string) ($stages[array_search($stageFilter, array_map('intval', array_column($stages, 'id')), true)]['name'] ?? '')) ?>. <a href="/roles/<?= $role['id'] ?>?view=list#tab-pipeline">Show everyone</a></span>
       <?php endif; ?>
     </div>
+    <?php endif; ?>
 
-    <?php if ($view === 'board'):
+    <?php if ($who):
+      $wlAll = $who === 'responded' ? $responded : $waitingList;
+      // Their stages inside this tab (17 Nov 2026): Applied, Under review, Submitted to client… with the numbers.
+      $wlCounts = array_count_values(array_map(fn ($x) => (int) $x['stage_id'], $wlAll));
+      $st = (int) ($_GET['st'] ?? 0);
+      $wl = $st ? array_values(array_filter($wlAll, fn ($x) => (int) $x['stage_id'] === $st)) : $wlAll; ?>
+      <?php if ($wlAll): ?>
+        <nav class="stage-tabs sub-tabs" aria-label="By stage">
+          <a href="/roles/<?= (int) $role['id'] ?>?who=<?= e($who) ?>#tab-pipeline" class="st-all<?= !$st ? ' on' : '' ?>"<?= !$st ? ' aria-current="page"' : '' ?>>All <b>(<?= count($wlAll) ?>)</b></a>
+          <?php foreach ($stages as $sx): $n = $wlCounts[(int) $sx['id']] ?? 0; if (!$n) { continue; } $on = $st === (int) $sx['id']; ?>
+            <a href="/roles/<?= (int) $role['id'] ?>?who=<?= e($who) ?>&amp;st=<?= (int) $sx['id'] ?>#tab-pipeline" class="<?= \Eshcol\Ats\Services\KeyFacts::stageTone((string) $sx['name'], (string) $sx['kind']) ?><?= $on ? ' on' : '' ?>"<?= $on ? ' aria-current="page"' : '' ?>><?= e($sx['name']) ?> <b>(<?= $n ?>)</b></a>
+          <?php endforeach; ?>
+        </nav>
+      <?php endif; ?>
+      <p class="small muted" style="margin:0 0 10px"><?= $who === 'responded'
+        ? "Everyone who has answered our details request or written back."
+        : "Everyone we have asked or written to who hasn't answered yet." ?>
+        Best first: those Claude has assessed for this position by Claude's score, then the rest by keyword score (marked "keyword").
+        <?= $closedOut[$who] ? ' Not shown: ' . $closedOut[$who] . ' marked Not suitable, Withdrawn, No response or Future requirement (see their stage tabs).' : '' ?></p>
+      <?php if (!$wl): ?>
+        <div class="card empty"><?= $who === 'responded' ? 'Nobody has responded yet.' : 'Nobody is waiting: everyone we asked has answered.' ?></div>
+      <?php else: ?>
+        <div class="table-wrap"><table class="list">
+          <thead><tr><th>Rank</th><th>Candidate</th><th>Stage</th></tr></thead>
+          <tbody><?php foreach ($wl as $i => $a) { echo $row($a, $i + 1); } ?></tbody>
+        </table></div>
+      <?php endif; ?>
+    <?php elseif ($view === 'board'):
       $cols = [];
       foreach ($all as $a) { $cols[(int) $a['stage_id']][] = $a; }
       // Long columns show their first $cap cards (best first) with a link to the rest (B12, 15 Nov 2026): a busy position

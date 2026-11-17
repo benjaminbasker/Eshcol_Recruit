@@ -100,6 +100,111 @@ final class KeyFacts
         return $out;
     }
 
+    /** Stage tags already fetched this request: candidate id => list of ['role_id', 'title', 'stage', 'stage_kind']. */
+    private static array $stageCache = [];
+
+    /**
+     * Fetch the stages of many candidates in one query (17 Nov 2026), so a list can call stageTags() per row
+     * without a query each. Open and on-hold positions the user may see; general pools left out.
+     */
+    public static function primeStages(\Eshcol\Ats\App $app, array $candidateIds): void
+    {
+        $ids = array_values(array_diff(array_unique(array_filter(array_map('intval', $candidateIds))), array_keys(self::$stageCache)));
+        if (!$ids) {
+            return;
+        }
+        foreach ($ids as $id) {
+            self::$stageCache[$id] = [];
+        }
+        $in = implode(',', $ids);
+        foreach ($app->db->all("SELECT a.candidate_id, r.id AS role_id, r.title, s.name AS stage, s.kind AS stage_kind FROM applications a JOIN roles r ON r.id = a.role_id
+                JOIN stages s ON s.id = a.stage_id WHERE a.candidate_id IN ($in) AND r.is_pool = 0 AND r.status IN ('open','on_hold')
+                AND " . \Eshcol\Ats\Access::roleFilter(\Eshcol\Ats\Auth::user(), 'r.id') . ' ORDER BY s.sort DESC, r.title') as $ap) {
+            self::$stageCache[(int) $ap['candidate_id']][] = $ap;
+        }
+    }
+
+    /**
+     * Their stage, as coloured tags, for any list (17 Nov 2026). With $roleId: only that position's stage, without
+     * its title (the list is already about that position). Without: one tag per open position, "Title · Stage".
+     */
+    public static function stageTags(\Eshcol\Ats\App $app, int $candidateId, ?int $roleId = null): string
+    {
+        if ($candidateId <= 0) {
+            return '';
+        }
+        self::primeStages($app, [$candidateId]);
+        $out = [];
+        foreach (self::$stageCache[$candidateId] ?? [] as $p) {
+            if ($roleId !== null && (int) $p['role_id'] !== $roleId) {
+                continue;
+            }
+            $out[] = self::stageChip((string) $p['stage'], (string) $p['stage_kind'], $roleId !== null ? null : (string) $p['title']);
+        }
+        return $out ? '<span class="stage-tags">' . implode(' ', $out) . '</span>' : '';
+    }
+
+    /** Their stages as plain text, "Accounting Associate: Shortlisted", for places that can't show tags (the search box). */
+    public static function stagesText(\Eshcol\Ats\App $app, int $candidateId): string
+    {
+        self::primeStages($app, [$candidateId]);
+        return implode('; ', array_map(fn ($p) => $p['title'] . ': ' . $p['stage'], self::$stageCache[$candidateId] ?? []));
+    }
+
+    /** Whether Claude has assessed this application (so its rank score is Claude's, not the keyword score). Pure. */
+    public static function byClaude(array $app, array $fitRows): bool
+    {
+        $f = $fitRows[(int) $app['id']] ?? null;
+        return $f && ($f['status'] ?? '') === 'done' && ($f['score'] ?? null) !== null;
+    }
+
+    /** The score a ranked list uses (17 Nov 2026): Claude's assessment when done, else the keyword score. Pure. */
+    public static function rankScore(array $app, array $fitRows): ?int
+    {
+        $f = $fitRows[(int) $app['id']] ?? null;
+        if ($f && ($f['status'] ?? '') === 'done' && ($f['score'] ?? null) !== null) {
+            return (int) $f['score'];
+        }
+        return ($app['eff_score'] ?? null) !== null ? (int) $app['eff_score'] : null;
+    }
+
+    /**
+     * A position's Responded / Yet to respond lists (17 Nov 2026), each best first. Responded: answered the details
+     * request or wrote back. Yet to respond: asked or written to, no answer yet. Closed stages (fail, hold) are left
+     * out and counted in 'closed'. $apps: the position's applications; $kf: forCandidates(); $fitRows: by application id. Pure.
+     */
+    public static function replyLists(array $apps, array $kf, array $fitRows): array
+    {
+        $out = ['responded' => [], 'waiting' => [], 'closed' => ['responded' => 0, 'waiting' => 0]];
+        foreach ($apps as $a) {
+            $k = $kf[(int) $a['candidate_id']] ?? [];
+            $did = ($k['responded'] ?? null) === 'answered' || !empty($k['msg_in']);
+            $asked = !$did && (($k['responded'] ?? null) === 'asked' || !empty($k['msg_out']));
+            if (!$did && !$asked) {
+                continue;
+            }
+            $key = $did ? 'responded' : 'waiting';
+            if (in_array($a['stage_kind'] ?? '', ['fail', 'hold'], true)) {
+                $out['closed'][$key]++;
+                continue;
+            }
+            $out[$key][] = $a;
+        }
+        // Those Claude assessed for this position first, by Claude's score; then the rest by keyword score. The two
+        // scales differ (a keyword 96 is not better than a Claude 89), so they are never mixed (17 Nov 2026).
+        $by = fn (array $x, array $y): int => [(int) self::byClaude($y, $fitRows), self::rankScore($y, $fitRows) ?? -1, (string) ($x['full_name'] ?? '')]
+            <=> [(int) self::byClaude($x, $fitRows), self::rankScore($x, $fitRows) ?? -1, (string) ($y['full_name'] ?? '')];
+        usort($out['responded'], $by);
+        usort($out['waiting'], $by);
+        return $out;
+    }
+
+    /** Forget what primeStages() fetched (after a stage changes in the same request, and in tests). */
+    public static function forgetStages(): void
+    {
+        self::$stageCache = [];
+    }
+
     /** The colour of a stage tag, by its name and kind (16 Nov 2026). Pure. */
     public static function stageTone(string $name, string $kind): string
     {

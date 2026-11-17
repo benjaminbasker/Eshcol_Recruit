@@ -21,6 +21,20 @@ function lpa(mixed $v): string
 }
 
 /**
+ * A candidate's stage as coloured tags, for any list (17 Nov 2026): "Accounting Associate · Shortlisted".
+ * With $roleId, only that position's stage. Call prime_stages() with the list's ids first: one query, not one per row.
+ */
+function stage_tags(int|string|null $candidateId, ?int $roleId = null): string
+{
+    return \Eshcol\Ats\Services\KeyFacts::stageTags(\Eshcol\Ats\App::get(), (int) $candidateId, $roleId);
+}
+
+function prime_stages(array $candidateIds): void
+{
+    \Eshcol\Ats\Services\KeyFacts::primeStages(\Eshcol\Ats\App::get(), $candidateIds);
+}
+
+/**
  * A phone number as a "tel:" link (16 Nov 2026), so the computer's calling app (Windows Phone Link, Teams, Zoom
  * Phone and so on) dials it directly: an Indian mobile becomes +91 and ten digits; a number already in +country
  * form is kept; anything else is passed on as its digits.
