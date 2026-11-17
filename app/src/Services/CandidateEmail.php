@@ -207,15 +207,10 @@ final class CandidateEmail
         // ---- signature: Benjamin's, unless the email is from someone else (an interview booked by a recruiter)
         $sigName = (string) ($p['signature']['name'] ?? 'Benjamin Basker');
         $sigLines = (array) ($p['signature']['lines'] ?? ['Founder and Managing Director', 'Eshcol Global Services (P) Ltd']);
-        $html[] = '<tr><td class="px" style="padding:18px 40px 0 40px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
-            . '<td width="3" bgcolor="' . self::SAND . '" style="width:3px; background-color:' . self::SAND . ';">&nbsp;</td>'
-            . '<td style="padding:4px 0 4px 18px;">'
-            . '<p style="margin:0 0 6px 0; ' . $f . ' font-size:15px; line-height:22px; color:' . self::INK . ';">Warm regards,</p>'
-            . '<p style="margin:0 0 4px 0; ' . $serif . ' font-size:20px; line-height:26px; color:' . self::AUB . ';">' . $h($sigName) . '</p>'
-            . '<p style="margin:0; ' . $f . ' font-size:14px; line-height:21px; color:' . self::MUTED . ';">' . implode('<br>', array_map($h, $sigLines)) . '</p>'
-            . '</td></tr></table></td></tr>';
+        // Benjamin's formatted signature (17 Nov 2026): logo, name, title, company, mobile, website, social icons.
+        $html[] = '<tr><td class="px" style="padding:18px 40px 0 40px;">' . signature_html($p['signature']['user'] ?? null) . '</td></tr>';
         $text[] = '';
-        $text[] = 'Warm regards,';
+        $text[] = 'Regards,';
         $text[] = '';
         $text[] = $sigName;
         foreach ($sigLines as $l) {

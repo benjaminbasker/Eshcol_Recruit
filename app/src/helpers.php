@@ -213,6 +213,46 @@ function signature_lines(array $u): array
     ], fn ($l) => $l !== ''));
 }
 
+/**
+ * The formatted email signature (Benjamin's design, Eshcol_Email_Signature.html; 17 Nov 2026), for every email the
+ * app sends: "Regards," then the logo beside name, title, company, mobile and website, then the LinkedIn, Facebook,
+ * X and "Follow Us" icons. The images are served from this app (assets/sig/), not embedded, so Gmail shows them.
+ * $u: the sender (name, title, mobile, role); null = the owner. The personal LinkedIn icon is the owner's only.
+ */
+function signature_html(?array $u = null, string $regards = 'Regards,'): string
+{
+    $app = \Eshcol\Ats\App::get();
+    $u ??= $app->db->one("SELECT * FROM users WHERE role = 'owner' AND is_active = 1 ORDER BY id LIMIT 1") ?: [];
+    $base = rtrim((string) ($app->config['app']['url'] ?? 'https://recruit.eshcolglobal.com'), '/') . '/assets/sig/';
+    $f = "font-family:'Plus Jakarta Sans','Segoe UI',Roboto,Arial,Helvetica,sans-serif;";
+    $img = fn (string $file, int $w, int $h, string $alt) => '<img src="' . e($base . $file) . '" width="' . $w . '" height="' . $h . '" alt="' . e($alt) . '" style="display:block;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;" />';
+    $icon = fn (string $href, string $file, int $w, int $h, string $alt) => '<td style="padding:0;"><a href="' . e($href) . '" style="text-decoration:none;">' . $img($file, $w, $h, $alt) . '</a></td><td width="6" style="width:6px;font-size:0;line-height:0;">&nbsp;</td>';
+    $name = trim((string) ($u['name'] ?? '')) ?: 'Eshcol Global';
+    $title = trim((string) ($u['title'] ?? ''));
+    $mobile = trim((string) ($u['mobile'] ?? ''));
+    $tel = $mobile !== '' ? tel_link($mobile) : '';
+    $shown = $tel !== '' && preg_match('/^tel:\+91(\d{5})(\d{5})$/', $tel, $m) ? "+91 $m[1] $m[2]" : $mobile;
+    $owner = ($u['role'] ?? '') === 'owner';
+    return '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;' . $f . '">'
+        . '<tr><td style="padding:0 0 10px 0;' . $f . 'font-size:13px;line-height:17px;font-weight:bold;color:#1A1A1A;">' . e($regards) . '</td></tr>'
+        . '<tr><td style="padding:0;"><table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr>'
+        . '<td valign="middle" style="padding:0;vertical-align:middle;">' . $img('logo.png', 200, 96, 'Eshcol Global, People and Property') . '</td>'
+        . '<td width="8" style="width:8px;min-width:8px;font-size:0;line-height:0;">&nbsp;</td>'
+        . '<td valign="middle" style="padding:0;vertical-align:middle;' . $f . '">'
+        . '<div style="font-size:15px;line-height:19px;font-weight:bold;color:#320A67;">' . e($name) . '</div>'
+        . ($title !== '' ? '<div style="font-size:13px;line-height:16px;font-weight:bold;color:#7946B2;">' . e($title) . '</div>' : '')
+        . '<div style="font-size:13px;line-height:16px;font-weight:bold;color:#320A67;">Eshcol Global Services (P) Ltd</div>'
+        . ($mobile !== '' ? '<div style="font-size:13px;line-height:16px;color:#6E6780;">Mobile:&nbsp;<a href="' . e($tel) . '" style="color:#320A67;text-decoration:none;">' . e($shown) . '</a></div>' : '')
+        . '<div style="font-size:13px;line-height:16px;color:#6E6780;">Website:&nbsp;<a href="https://www.eshcolglobal.com" style="color:#320A67;text-decoration:none;">www.eshcolglobal.com</a></div>'
+        . '</td></tr></table></td></tr>'
+        . '<tr><td style="padding:9px 0 0 0;"><table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr>'
+        . ($owner ? $icon('https://www.linkedin.com/in/benjaminb2/', 'linkedin.png', 24, 24, $name . ' on LinkedIn') : '')
+        . $icon('https://www.facebook.com/eshcolglobal/', 'facebook.png', 24, 24, 'Eshcol Global on Facebook')
+        . $icon('https://x.com/eshcolglobal', 'x.png', 24, 24, 'Eshcol Global on X')
+        . '<td style="padding:0;"><a href="https://www.linkedin.com/company/eshcolglobal" style="text-decoration:none;">' . $img('follow-linkedin.png', 93, 30, 'Follow Eshcol Global on LinkedIn') . '</a></td>'
+        . '</tr></table></td></tr></table>';
+}
+
 /** "Kavitha Raman" → "KR" (for avatar circles). */
 function initials(string $name): string
 {

@@ -177,7 +177,7 @@ $check('subject like yours: "Accounts Officer Profiles (code)"', $subject === "A
 $check('opening line like yours', str_contains($html, 'Radhika,') && str_contains($html, 'I am attaching one profile for the Accounts Officer position. Kindly review the same and let me know your feedback.'));
 $check('the table: S.No, name, CTC as 3,24,000 / 4,00,000, notice, remarks', str_contains($html, 'S.No') && str_contains($html, '3,24,000') && str_contains($html, '4,00,000') && str_contains($html, 'Immediate') && str_contains($html, 'Recently moved to Pune'));
 $check('the CV is attached and linked, with a "download all" link', count($att) === 1 && str_ends_with($att[0]['name'], 'Chitra Cvmode - Eshcol Global.pdf') && str_contains($html, '/cv/' . $item['id']) && str_contains($html, '/zip'));
-$check('signed with your name, title and mobile from your profile', str_contains($html, 'Regards,') && str_contains($html, 'Website: www.eshcolglobal.com'));
+$check('signed with your formatted signature (17 Nov 2026): logo, name, company, website, the social icons', str_contains($html, 'Regards,') && str_contains($html, '/assets/sig/logo.png') && str_contains($html, 'Eshcol Global Services (P) Ltd') && str_contains($html, 'www.eshcolglobal.com') && str_contains($html, '/assets/sig/follow-linkedin.png') && !str_contains($html, 'data:image'));
 // 16 Nov 2026: a mail program turned the client's link into "/s/<code>&routed=1" and it showed "Page not found".
 $keepUri = $_SERVER['REQUEST_URI'] ?? null;
 $_SERVER['REQUEST_URI'] = '/s/M3hPkSyVT6ueUPXVKQth4KV5gy9dOF2i&routed=1';

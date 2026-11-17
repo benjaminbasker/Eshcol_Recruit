@@ -274,7 +274,8 @@ final class Interviews
             'meeting_link' => $kind === 'virtual' ? $this->url($link) : null, 'address' => $kind === 'in_person' ? $address : null,
             'maps_url' => $kind === 'in_person' && $maps ? $this->url($maps) : null, 'created_by' => $userId]);
         $this->confirmed($id, $userId);
-        return [true, 'Booked. The call letter is on its way to ' . $a['full_name'] . ', and the client has been told.', $id];
+        $told = $db->col('SELECT client_notified_at FROM interviews WHERE id = ?', [$id]) !== null;
+        return [true, 'Booked. The call letter is on its way to ' . $a['full_name'] . ($told ? ', and the client has been told.' : '. The client hears in the 6 pm email with the day\'s bookings.'), $id];
     }
 
     /** The candidate picks a slot from their link. Returns [ok, message]. */
@@ -338,8 +339,14 @@ final class Interviews
         $files = $this->attachmentsFor($iv, $a);
         $emailId = $this->designed('interview', $a, $subject, $this->confirmation($iv, $a), $u, ['interview' => $id], $files, 10, $userId);
         $db->run('UPDATE interviews SET letter_email_id = ?, letter_sent_at = NOW() WHERE id = ?', [$emailId, $id]);
-        // Tell the client.
+        // Tell the client: straight away when the interview is today, or tomorrow and it's already past 6 pm (the 6 pm
+        // email has gone); otherwise in one email at 6 pm with everything booked that day (Benjamin, 17 Nov 2026).
         $contact = $db->one('SELECT name, email FROM client_contacts WHERE client_id = ? AND email IS NOT NULL ORDER BY id LIMIT 1', [$a['client_id']]);
+        if ($contact && !self::clientNow((string) $iv['starts_at'], date('Y-m-d H:i:s'), $this->digestOn())) {
+            $contact = null; // waits for the 6 pm email (clientDigest)
+        } elseif ($contact) {
+            $db->run('UPDATE interviews SET client_notified_at = NOW() WHERE id = ?', [$id]);
+        }
         if ($contact) {
             $when = $this->when($iv);
             $cfirst = trim((string) strtok((string) $contact['name'], ' '));
@@ -359,6 +366,116 @@ final class Interviews
         }
         (new Retention($this->app))->touch((int) $a['candidate_id']);
         Audit::log('interview_booked', 'candidate', (int) $a['candidate_id'], ['interview' => $id, 'round' => (int) $iv['round']]);
+    }
+
+    /** The hour of the client's daily email (24-hour clock). */
+    public const DIGEST_HOUR = 18;
+
+    /**
+     * Does the client hear about this booking straight away? Yes when the interview is today, or tomorrow and the 6 pm
+     * email has already gone (it's 6 pm or later now), or the daily email is switched off. Pure.
+     */
+    public static function clientNow(string $startsAt, string $now, bool $digestOn = true): bool
+    {
+        if (!$digestOn) {
+            return true;
+        }
+        $day = substr($startsAt, 0, 10);
+        $today = substr($now, 0, 10);
+        if ($day <= $today) {
+            return true;
+        }
+        return $day === date('Y-m-d', strtotime($today . ' +1 day')) && (int) substr($now, 11, 2) >= self::DIGEST_HOUR;
+    }
+
+    /** The 6 pm client email is on unless switched off in settings (client_digest = 0). */
+    public function digestOn(): bool
+    {
+        // No update check here: it runs inside the booking's transaction, and pages already wait while an update is pending.
+        return $this->app->setting('client_digest', '1') === '1';
+    }
+
+    /**
+     * The 6 pm email (17 Nov 2026): to each client, one email with every interview booked for them that the client hasn't
+     * been told about yet, in time order, with all the calendar invites. Returns a line for the scheduled-jobs log.
+     */
+    public function clientDigest(): string
+    {
+        $db = $this->app->db;
+        $rows = $db->all("SELECT i.id, r.client_id FROM interviews i JOIN applications a ON a.id = i.application_id JOIN roles r ON r.id = a.role_id
+            WHERE i.status = 'booked' AND i.client_notified_at IS NULL AND i.starts_at > NOW() ORDER BY r.client_id, i.starts_at");
+        $by = [];
+        foreach ($rows as $r) {
+            $by[(int) $r['client_id']][] = (int) $r['id'];
+        }
+        $sent = 0;
+        foreach ($by as $clientId => $ids) {
+            $contact = $db->one('SELECT name, email FROM client_contacts WHERE client_id = ? AND email IS NOT NULL ORDER BY id LIMIT 1', [$clientId]);
+            if (!$contact) {
+                $db->run('UPDATE interviews SET client_notified_at = NOW() WHERE id IN (' . implode(',', $ids) . ')'); // nobody to tell
+                continue;
+            }
+            $lines = [];
+            $rowsT = [];
+            $wheres = [];
+            $files = [];
+            $creator = 0;
+            foreach ($ids as $n => $id) {
+                $iv = $db->one('SELECT * FROM interviews WHERE id = ?', [$id]);
+                $a = $this->application((int) $iv['application_id']);
+                $creator = $creator ?: (int) $iv['created_by'];
+                $where = $iv['kind'] === 'virtual' ? 'Online: ' . $iv['meeting_link'] : ($iv['kind'] === 'in_person' ? 'In person at: ' . one_line($iv['address']) : 'By phone');
+                $t0 = strtotime((string) $iv['starts_at']);
+                $slot = date('D j M, g:i', $t0) . '–' . date('g:i A', $t0 + 60 * (int) $iv['duration_min']);
+                $lines[] = '- ' . $a['full_name'] . ' (' . ref_candidate($a['candidate_id']) . ') | ' . $slot . ' | ' . $a['title'] . ((int) $iv['round'] > 1 ? ', round ' . (int) $iv['round'] : '') . ' | ' . $where;
+                $rowsT[] = [$a['full_name'] . ' (' . ref_candidate($a['candidate_id']) . ')', $slot, $a['title'] . ((int) $iv['round'] > 1 ? ', round ' . (int) $iv['round'] : ''), $where];
+                $wheres[$where] = true;
+                $files[] = ['ics' => $this->ics($iv, $a, true), 'name' => 'Interview ' . ($n + 1) . ' - ' . preg_replace('/[^\p{L}\p{N} .-]/u', '', (string) $a['full_name']) . '.ics'];
+            }
+            $cfirst = trim((string) strtok((string) $contact['name'], ' '));
+            $count = count($ids);
+            $oneWhere = count($wheres) === 1 ? array_key_first($wheres) : null; // the same Meet link for all: once, under the table
+            $intro = ($cfirst !== '' ? "$cfirst," : 'Hello,') . "\n\nThis confirms the " . ($count === 1 ? 'interview' : "$count interviews") . ' arranged today:';
+            $outro = ($oneWhere !== null ? $oneWhere . "\n\n" : '') . ($count === 1 ? 'A calendar invite is attached.' : 'A calendar invite for each is attached.') . " I'll be in touch for your feedback after the interviews.";
+            $body = $intro . "\n\n" . implode("\n", $lines) . "\n\n" . $outro;
+            $u = $this->sender($creator ?: null);
+            $this->queue('client_interview', ['email' => $contact['email'], 'full_name' => $contact['name'], 'candidate_id' => null],
+                'Interviews confirmed: ' . $count . ' arranged today (' . date('j M') . ')', $body, $u, ['interviews' => $ids, 'digest' => true], $files, 12, $creator ?: null,
+                null, null, [$intro, self::digestTable($rowsT, $oneWhere === null), $outro]);
+            $db->run('UPDATE interviews SET client_notified_at = NOW() WHERE id IN (' . implode(',', $ids) . ')');
+            $sent++;
+        }
+        return $sent ? "6 pm interview email to $sent client(s)" : '';
+    }
+
+    /** The 6 pm email's table: Name, Time slot, Position (and Where, when the links differ). Inline styles for mail apps. */
+    public static function digestTable(array $rows, bool $withWhere): string
+    {
+        $e = fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $th = 'style="text-align:left; padding:8px 12px; background:#320A67; color:#FFFFFF; font-size:14px; font-weight:bold; border:1px solid #320A67;"';
+        $head = ['Name', 'Time slot', 'Position'];
+        if ($withWhere) {
+            $head[] = 'Where';
+        }
+        $html = '<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; margin:4px 0 16px 0; font-family:Calibri, Arial, Helvetica, sans-serif; font-size:14px; color:#222222;"><tr>';
+        foreach ($head as $h) {
+            $html .= '<th ' . $th . '>' . $h . '</th>';
+        }
+        $html .= '</tr>';
+        foreach ($rows as $i => $r) {
+            $bg = $i % 2 ? '#F6F2FB' : '#FFFFFF';
+            $cells = $withWhere ? $r : array_slice($r, 0, 3);
+            $html .= '<tr>';
+            foreach ($cells as $j => $c) {
+                $v = $e($c);
+                if ($j === 3) {
+                    $v = preg_replace('#(https?://[^\s<]+)#', '<a href="$1" style="color:#5B2C93;">$1</a>', $v);
+                }
+                $html .= '<td style="padding:8px 12px; border:1px solid #E2D8F1; background:' . $bg . ';' . ($j === 0 ? ' font-weight:bold;' : '') . '">' . $v . '</td>';
+            }
+            $html .= '</tr>';
+        }
+        return $html . '</table>';
     }
 
     /** How the round is held, in the candidate's words. */
@@ -444,7 +561,7 @@ final class Interviews
         $lines = array_values(array_filter([(string) ($u['title'] ?? ''), 'Eshcol Global Services (P) Ltd', !empty($u['mobile']) ? 'Mobile: ' . $u['mobile'] : '']));
         $sub = (string) $p['sub'];
         [$html, $text] = CandidateEmail::render($p + ['title' => $subject, 'sub_html' => CandidateEmail::h($sub), 'sub_text' => $sub,
-            'signature' => ['name' => (string) ($u['name'] ?? 'Eshcol Global'), 'lines' => $lines], 'footer_reason' => Engagement::footerReason(Engagement::of($to))]);
+            'signature' => ['name' => (string) ($u['name'] ?? 'Eshcol Global'), 'lines' => $lines, 'user' => $u], 'footer_reason' => Engagement::footerReason(Engagement::of($to))]);
         return (new Mailer($this->app))->enqueue(['kind' => $kind, 'candidate_id' => $to['candidate_id'] ?? null, 'to_email' => $to['email'], 'to_name' => $to['full_name'] ?? null,
             'subject' => $subject, 'html' => $html, 'text' => $text, 'meta' => $meta + ['attachments' => $files], 'priority' => $priority, 'created_by' => $userId]);
     }
@@ -644,24 +761,27 @@ final class Interviews
     private function sender(?int $userId): array
     {
         $db = $this->app->db;
-        return ($userId ? $db->one('SELECT name, title, mobile, email FROM users WHERE id = ?', [$userId]) : null)
-            ?: ($db->one("SELECT name, title, mobile, email FROM users WHERE role = 'owner' ORDER BY id LIMIT 1") ?: ['name' => 'Eshcol Global', 'title' => '', 'mobile' => '', 'email' => '']);
+        return ($userId ? $db->one('SELECT name, title, mobile, email, role FROM users WHERE id = ?', [$userId]) : null)
+            ?: ($db->one("SELECT name, title, mobile, email, role FROM users WHERE role = 'owner' ORDER BY id LIMIT 1") ?: ['name' => 'Eshcol Global', 'title' => '', 'mobile' => '', 'email' => '']);
     }
 
     /** Queues a plain, personal-looking email (like the letters Benjamin writes) with signature, optional button and files. */
-    private function queue(string $kind, array $to, string $subject, string $body, array $u, array $meta, array $files, int $priority, ?int $userId, ?string $buttonUrl = null, ?string $buttonLabel = null): int
+    private function queue(string $kind, array $to, string $subject, string $body, array $u, array $meta, array $files, int $priority, ?int $userId, ?string $buttonUrl = null, ?string $buttonLabel = null, ?array $parts = null): int
     {
         $esc = fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $sig = signature_lines($u);
-        $linked = preg_replace('#(https?://[^\s<]+)#', '<a href="$1" style="color:#5B2C93;">$1</a>', nl2br($esc($body)));
-        // Bullet lines ("- ...") read better as real bullets.
-        $linked = preg_replace('#(^|<br />\s*)- #', '$1&bull;&nbsp;', $linked);
+        $toHtml = function (string $t) use ($esc): string {
+            $l = preg_replace('#(https?://[^\s<]+)#', '<a href="$1" style="color:#5B2C93;">$1</a>', nl2br($esc($t)));
+            return preg_replace('#(^|<br />\s*)- #', '$1&bull;&nbsp;', $l); // bullet lines ("- ...") as real bullets
+        };
+        // $parts: [text, html (a table), text] for the 6 pm email; otherwise the plain body.
+        $linked = $parts ? $toHtml($parts[0]) . '</p>' . $parts[1] . '<p style="margin:0 0 16px 0;">' . $toHtml($parts[2]) : $toHtml($body);
         $toCandidate = !empty($to['candidate_id']) && !str_starts_with($kind, 'client'); // every candidate email carries the LinkedIn button
         $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0; padding:16px; background:#FFFFFF;">'
             . '<div style="font-family:Calibri, Arial, Helvetica, sans-serif; font-size:15px; line-height:23px; color:#222222; max-width:640px;">'
             . '<p style="margin:0 0 16px 0;">' . $linked . '</p>'
             . ($buttonUrl ? '<p style="margin:0 0 18px 0;"><a href="' . $esc($buttonUrl) . '" style="display:inline-block; padding:11px 20px; background:#5B2C93; color:#FFFFFF; text-decoration:none; border-radius:6px; font-weight:bold; font-family:Arial, Helvetica, sans-serif;">' . $esc((string) $buttonLabel) . '</a></p>' : '')
-            . '<p style="margin:0 0 4px 0;">Regards,</p><p style="margin:0;">' . implode('<br>', array_map(fn ($l, $i) => $i === 0 ? '<b>' . $esc($l) . '</b>' : $esc($l), $sig, array_keys($sig))) . '</p>'
+            . signature_html($u)
             . ($toCandidate ? CandidateEmail::linkedinPlain()[0] : '')
             . '</div></body></html>';
         $text = $body . "\n\nRegards,\n" . implode("\n", $sig) . "\n" . ($toCandidate ? CandidateEmail::linkedinPlain()[1] : '');

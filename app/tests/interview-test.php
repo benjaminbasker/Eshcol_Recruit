@@ -121,7 +121,22 @@ $check('attached: the JD and a calendar invite (no company profile for virtual)'
 $ics = $svc->ics($iv, $svc->application($pa), false);
 $check('the calendar invite is valid (start in UTC, the Meet link, a 30-minute alarm)', str_contains($ics, "BEGIN:VCALENDAR\r\n") && str_contains($ics, 'DTSTART:' . gmdate('Ymd\THis\Z', strtotime($t1))) && str_contains($ics, 'meet.google.com') && str_contains($ics, 'TRIGGER:-PT30M'));
 $client = $db->one('SELECT * FROM email_queue WHERE id > ? AND kind = \'client_interview\' ORDER BY id DESC LIMIT 1', [$maxEmail]);
-$check('the client gets a confirmation with the invite', $client && $client['to_email'] === "radhika.$tag@gmail.com" && str_contains($client['text'], 'Priya Interview (' . ref_candidate($p) . ')') && $att($client) === ['Interview.ics']);
+// 17 Nov 2026: the interview is in two days, so the client hears in the 6 pm email, not straight away.
+$check('the client is not emailed straight away for an interview two days ahead (it waits for 6 pm)', !$client
+    && $db->col('SELECT client_notified_at FROM interviews WHERE id = ?', [$iv['id']]) === null);
+$digestLog = $svc->clientDigest();
+$client = $db->one('SELECT * FROM email_queue WHERE id > ? AND kind = \'client_interview\' ORDER BY id DESC LIMIT 1', [$maxEmail]);
+$check('the 6 pm email: to the client, naming the candidate, with the calendar invite (' . $digestLog . ')', $client && $client['to_email'] === "radhika.$tag@gmail.com"
+    && str_contains($client['text'], 'Priya Interview (' . ref_candidate($p) . ')') && str_contains($client['subject'], 'Interviews confirmed: 1 arranged today')
+    && count($att($client)) === 1 && str_ends_with($att($client)[0], '.ics'));
+$check('…marked as told, so the next 6 pm email doesn\'t repeat it', $db->col('SELECT client_notified_at FROM interviews WHERE id = ?', [$iv['id']]) !== null && $svc->clientDigest() === '');
+
+echo "\nWhen the client hears straight away (17 Nov 2026)\n";
+$check('an interview today: straight away', Interviews::clientNow('2026-11-17 18:30:00', '2026-11-17 10:00:00'));
+$check('tomorrow, booked before 6 pm: waits for the 6 pm email', !Interviews::clientNow('2026-11-18 16:00:00', '2026-11-17 14:20:00'));
+$check('tomorrow, booked after 6 pm (the 6 pm email has gone): straight away', Interviews::clientNow('2026-11-18 10:00:00', '2026-11-17 18:40:00'));
+$check('in two days, booked at night: waits for tomorrow\'s 6 pm email', !Interviews::clientNow('2026-11-19 10:00:00', '2026-11-17 21:00:00'));
+$check('the daily email switched off: always straight away', Interviews::clientNow('2026-11-25 10:00:00', '2026-11-17 09:00:00', false));
 $check('the candidate moved to "Client interview"', $stageName($pa) === 'Client interview');
 
 echo "\nThe in-person letter (round 2, your second format)\n";

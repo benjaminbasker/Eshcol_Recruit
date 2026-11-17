@@ -292,8 +292,8 @@ final class Shortlists
     private function sender(array $s): array
     {
         $db = $this->app->db;
-        return $db->one('SELECT name, title, mobile, email FROM users WHERE id = ?', [(int) $s['created_by']])
-            ?: ($db->one("SELECT name, title, mobile, email FROM users WHERE role = 'owner' ORDER BY id LIMIT 1") ?: ['name' => 'Eshcol Global', 'title' => '', 'mobile' => '', 'email' => '']);
+        return $db->one('SELECT name, title, mobile, email, role FROM users WHERE id = ?', [(int) $s['created_by']])
+            ?: ($db->one("SELECT name, title, mobile, email, role FROM users WHERE role = 'owner' ORDER BY id LIMIT 1") ?: ['name' => 'Eshcol Global', 'title' => '', 'mobile' => '', 'email' => '']);
     }
 
     /**
@@ -356,7 +356,7 @@ final class Shortlists
             . '<p style="margin:0 0 6px 0;">' . ($s['mode'] === 'cvs' ? ($attachments ? 'The CVs are attached, and you can also open each one from its name above.' : 'Click a name to open the CV.') : 'Click a name to open the profile.') . '</p>'
             . '<p style="margin:10px 0 18px 0;">' . $btn("$link", 'Give your feedback', '#5B2C93', '#FFFFFF')
             . ($s['mode'] === 'cvs' ? $btn("$link/zip", 'Download all CVs', '#F1EBF9', '#320A67') : $btn("$link/pdf", 'Download all profiles', '#F1EBF9', '#320A67')) . '</p>'
-            . '<p style="margin:0 0 4px 0;">Regards,</p><p style="margin:0;">' . implode('<br>', array_map(fn ($l, $i) => $i === 0 ? '<b>' . $esc($l) . '</b>' : $esc($l), $sig, array_keys($sig))) . '</p>'
+            . signature_html($u)
             . '<p style="margin:22px 0 0 0; color:#8A8396; font-size:12px; line-height:17px;">These profiles are shared in confidence for this role. The links work until ' . $esc(date('j F Y', strtotime($s['expires_at']))) . '.</p>'
             . '</div></body></html>';
         $text = ($first !== '' ? "$first," : 'Hello,') . "\n\n$intro\n\n$textRows\nGive your feedback: $link\n"

@@ -131,6 +131,10 @@ $tasks = [
         // The Monday summary to the owners.
         return 'weekly summary queued for ' . (new \Eshcol\Ats\Services\Digest($app))->send() . ' owner(s)';
     }],
+    // The 6 pm email to each client with the interviews booked that day (17 Nov 2026).
+    'client_digest' => [fn () => $dueDaily('client_digest', \Eshcol\Ats\Services\Interviews::DIGEST_HOUR) && !(new \Eshcol\Ats\Services\Migrator($app))->pending(), function () use ($app) {
+        return (new \Eshcol\Ats\Services\Interviews($app))->clientDigest();
+    }],
     'interviews' => [fn () => true, function () use ($app) {
         if ((new \Eshcol\Ats\Services\Migrator($app))->pending()) {
             return '';

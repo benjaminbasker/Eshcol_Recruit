@@ -491,8 +491,8 @@ final class ClientPortal
     {
         $db = $this->app->db;
         $link = $this->url('/in/' . $token);
-        $u = ($userId ? $db->one('SELECT name, title, mobile, email FROM users WHERE id = ?', [$userId]) : null)
-            ?: ($db->one("SELECT name, title, mobile, email FROM users WHERE role = 'owner' ORDER BY id LIMIT 1") ?: ['name' => 'Eshcol Global']);
+        $u = ($userId ? $db->one('SELECT name, title, mobile, email, role FROM users WHERE id = ?', [$userId]) : null)
+            ?: ($db->one("SELECT name, title, mobile, email, role FROM users WHERE role = 'owner' ORDER BY id LIMIT 1") ?: ['name' => 'Eshcol Global']);
         $first = trim((string) strtok((string) $c['name'], ' '));
         if ($purpose === 'invite') {
             $subject = 'Your Eshcol Global client portal';
@@ -512,7 +512,7 @@ final class ClientPortal
             . '<p style="margin:0 0 14px 0;">' . ($first !== '' ? $esc($first) . ',' : 'Hello,') . '</p>'
             . implode('', array_map(fn ($p) => '<p style="margin:0 0 14px 0;">' . $esc($p) . '</p>', $paras))
             . '<p style="margin:6px 0 18px 0;"><a href="' . $esc($link) . '" style="display:inline-block; padding:11px 20px; background:#5B2C93; color:#FFFFFF; text-decoration:none; border-radius:6px; font-weight:bold; font-size:15px; font-family:Arial, Helvetica, sans-serif;">Open the client portal</a></p>'
-            . '<p style="margin:0 0 4px 0;">Regards,</p><p style="margin:0;">' . implode('<br>', array_map(fn ($l, $i) => $i === 0 ? '<b>' . $esc($l) . '</b>' : $esc($l), $sig, array_keys($sig))) . '</p>'
+            . signature_html($u)
             . '<p style="margin:22px 0 0 0; color:#8A8396; font-size:12px; line-height:17px;">' . $esc($small) . '</p></div></body></html>';
         $text = ($first !== '' ? "$first," : 'Hello,') . "\n\n" . implode("\n\n", $paras) . "\n\nOpen the client portal: $link\n\nRegards,\n" . implode("\n", $sig) . "\n\n$small\n";
         (new Mailer($this->app))->enqueue(['kind' => 'portal', 'to_email' => $c['email'], 'to_name' => $c['name'], 'subject' => $subject, 'html' => $html, 'text' => $text,

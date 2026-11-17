@@ -130,10 +130,10 @@ final class CandidateMessages
         if ($subject === '') {
             $subject = $orig && $orig['subject'] ? (preg_match('/^\s*re\s*:/i', $orig['subject']) ? $orig['subject'] : 'Re: ' . $orig['subject']) : 'A message from Eshcol Global';
         }
-        $u = $db->one('SELECT name, title, mobile, email FROM users WHERE id = ?', [$userId]) ?: ['name' => 'Eshcol Global'];
+        $u = $db->one('SELECT name, title, mobile, email, role FROM users WHERE id = ?', [$userId]) ?: ['name' => 'Eshcol Global'];
         $first = Questionnaires::firstName($c);
         $quote = $orig ? ['On ' . date('j M Y, g:i a', strtotime((string) $orig['received_at'])) . ', ' . ($c['full_name'] ?: $to) . ' wrote:', (string) $orig['body']] : null;
-        [$html, $text] = self::personal($body, signature_lines($u), $quote);
+        [$html, $text] = self::personal($body, signature_lines($u), $quote, $u);
         // Attachments: the documents you ticked (only ones offered for this candidate), plus any file you added.
         $allowed = [];
         if ($docIds) {
@@ -168,11 +168,12 @@ final class CandidateMessages
     }
 
     /** A personal-looking email (like a letter you would type), with signature and an optional quote. @return array{0:string,1:string} */
-    public static function personal(string $body, array $sig, ?array $quote = null): array
+    public static function personal(string $body, array $sig, ?array $quote = null, ?array $user = null): array
     {
         $h = fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $paras = implode('', array_map(fn ($p) => '<p style="margin:0 0 14px 0;">' . nl2br($h($p)) . '</p>', preg_split("/\n{2,}/", $body)));
-        $sigHtml = '<p style="margin:0 0 4px 0;">Regards,</p><p style="margin:0;">' . implode('<br>', array_map(fn ($l, $i) => $i === 0 ? '<b>' . $h($l) . '</b>' : $h($l), $sig, array_keys($sig))) . '</p>';
+        // The formatted signature (17 Nov 2026); the plain lines stay in the text version.
+        $sigHtml = '<div style="margin:6px 0 0 0;">' . signature_html($user) . '</div>';
         $quoteHtml = $quote ? '<div style="margin:22px 0 0 0; padding:0 0 0 12px; border-left:3px solid #D8D2E4; color:#6E6780; font-size:14px; line-height:21px;">'
             . '<p style="margin:0 0 6px 0;">' . $h($quote[0]) . '</p>' . nl2br($h($quote[1])) . '</div>' : '';
         $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0; padding:16px; background:#FFFFFF;">'
