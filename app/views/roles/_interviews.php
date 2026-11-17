@@ -31,7 +31,7 @@ $upcoming = array_filter($ivs, fn ($i) => in_array($i['status'], ['choosing', 'b
     <div class="slot-chips">
       <?php foreach ($list as $s): $t = strtotime($s['starts_at']); ?>
         <span class="slot-chip<?= $s['interview_id'] ? ' taken' : '' ?><?= $t < time() ? ' past' : '' ?>" title="<?= $s['source'] === 'client' ? 'Suggested by the client' : 'Added by you' ?>">
-          <?= date('D j M, g:i A', $t) ?> · <?= e($kinds[$s['kind']]) ?><?= $s['interview_id'] ? ' · <b>' . e($s['taken_by'] ?? 'booked') . '</b>' : '' ?><?= $s['source'] === 'client' ? ' ★' : '' ?>
+          <?= date('D j M, g:i A', $t) ?> · <?= e($kinds[$s['kind']]) ?><?= $s['interview_id'] ? ' · <b>' . e($s['taken_by'] ?? 'booked') . '</b>' : (!empty($s['clash_by']) ? ' · <span class="chip no" style="text-decoration:none" title="Booked on another of this client\'s positions: not offered to anyone">taken: ' . e($s['clash_by']) . '</span>' : '') ?><?= $s['source'] === 'client' ? ' ★' : '' ?>
           <?php if (!$s['interview_id']): ?><form method="post" action="/slots/<?= (int) $s['id'] ?>/delete" style="display:inline"><?= csrf() ?><button class="x" type="submit" aria-label="Remove this time" title="Remove">×</button></form><?php endif; ?>
         </span>
       <?php endforeach; ?>

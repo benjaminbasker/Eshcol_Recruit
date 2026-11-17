@@ -181,4 +181,33 @@ $booked = $db->one('SELECT * FROM interviews WHERE id = ?', [$civ['id']]);
 $check('invited with a video time first, chose in person: the address is filled and the meeting link cleared', $booked['kind'] === 'in_person'
     && str_contains((string) $booked['address'], 'Balewadi') && $booked['meeting_link'] === null && $booked['maps_url'] === 'https://maps.app.goo.gl/test');
 $check('one call letter for that booking', (int) $db->col("SELECT COUNT(*) FROM email_queue WHERE id > ? AND to_email = (SELECT email FROM candidates WHERE id = ?) AND subject LIKE 'Interview confirmed:%'", [$maxEmail, $c3]) === 1);
+echo "\nOne time, one interviewer: across a client's positions (17 Nov 2026)\n";
+// AdvantEdge gave the same times on Associate and Manager; Kiran (Manager) and Baliram (Associate) were both booked 18 Nov 4 pm.
+$role2 = $db->insert('roles', ['client_id' => $clientId, 'title' => 'Accounts Manager', 'location' => 'Pune', 'status' => 'open', 'code' => "ZZJ-$tag", 'score_threshold' => 0]);
+$t5 = date('Y-m-d 16:00', strtotime('+4 days'));
+$t6 = date('Y-m-d 16:30', strtotime('+4 days'));
+$svc->addSlots($role, 1, 'virtual', [$t5, $t6], 30, 'client');
+$svc->addSlots($role2, 1, 'virtual', [$t5, $t6], 30, 'client');
+[$m1, $m1a] = $person('Mohan Clashtest');
+$imp->attach($m1, $role2, $uid);
+$m1a2 = (int) $db->col('SELECT id FROM applications WHERE candidate_id = ? AND role_id = ?', [$m1, $role2]);
+[$m2, $m2a] = $person('Nila Clashtest');
+$svc->invite($m1a2, 1, $uid);
+$svc->invite($m2a, 1, $uid);
+$ivM = $db->one("SELECT * FROM interviews WHERE application_id = ? AND status = 'choosing'", [$m1a2]);
+$ivN = $db->one("SELECT * FROM interviews WHERE application_id = ? AND status = 'choosing'", [$m2a]);
+$s5Mgr = (int) $db->col('SELECT id FROM interview_slots WHERE role_id = ? AND starts_at = ?', [$role2, "$t5:00"]);
+$s5Asc = (int) $db->col('SELECT id FROM interview_slots WHERE role_id = ? AND starts_at = ?', [$role, "$t5:00"]);
+[$okM] = $svc->pick($ivM, $s5Mgr);
+$check('Manager: 4 pm booked', $okM);
+$check('…4 pm is no longer offered on the other position (Associate)', !in_array("$t5:00", array_column($svc->openSlots($role, 1), 'starts_at'), true)
+    && in_array("$t6:00", array_column($svc->openSlots($role, 1), 'starts_at'), true));
+[$okN, $msgN] = $svc->pick($ivN, $s5Asc);
+$check('…and an Associate candidate with an old link can\'t take it: "' . $msgN . '"', !$okN && (int) $db->col('SELECT COUNT(*) FROM interview_slots WHERE id = ? AND interview_id IS NULL', [$s5Asc]) === 1);
+[$okD, $msgD] = $svc->book($m2a, 1, 'virtual', $t5, 30, ['meeting_link' => 'https://meet.google.com/abc-defg-hij'], $uid);
+$check('booking 4 pm directly for the Associate is refused, naming who has it: "' . $msgD . '"', !$okD && str_contains($msgD, 'Mohan Clashtest') && str_contains($msgD, 'Accounts Manager'));
+[$okD2] = $svc->book($m2a, 1, 'virtual', $t6, 30, ['meeting_link' => 'https://meet.google.com/abc-defg-hij'], $uid);
+$check('4:30 is free: booked', $okD2);
+$check('a 45-minute booking at 4:15 overlaps both: refused', $svc->clashAt($clientId, date('Y-m-d 16:15:00', strtotime('+4 days')), 45) !== null);
+$check('another client\'s interviews never block this one', $svc->clashAt($clientId + 999999, "$t5:00", 30) === null);
 exit(0);

@@ -24,8 +24,26 @@ final class Interviews
     public const KINDS = ['virtual' => 'Virtual', 'in_person' => 'In person', 'phone' => 'Phone'];
     public const OUTCOMES = ['next_round' => 'Through to the next round', 'selected' => 'Selected', 'not_selected' => 'Not selected', 'on_hold' => 'On hold', 'no_show' => 'Did not turn up'];
 
+    /** A booked interview at the same client (any position) overlapping the slot "s" (roles "r"). */
+    private const CLASH_SQL = "SELECT 1 FROM interviews i2 JOIN applications a2 ON a2.id = i2.application_id JOIN roles r2 ON r2.id = a2.role_id
+                WHERE r2.client_id = r.client_id AND i2.status = 'booked' AND i2.starts_at IS NOT NULL
+                  AND i2.starts_at < s.starts_at + INTERVAL s.duration_min MINUTE AND i2.starts_at + INTERVAL i2.duration_min MINUTE > s.starts_at";
+
     public function __construct(private readonly App $app)
     {
+    }
+
+    /**
+     * Who is already booked with this client at an overlapping time, on any of its positions (17 Nov 2026).
+     * Null when the time is free. $exceptInterview: the interview being booked or moved.
+     */
+    public function clashAt(int $clientId, string $startsAt, int $minutes, int $exceptInterview = 0): ?array
+    {
+        return $this->app->db->one("SELECT i.id, i.starts_at, c.full_name, r.title FROM interviews i JOIN applications a ON a.id = i.application_id
+            JOIN roles r ON r.id = a.role_id JOIN candidates c ON c.id = a.candidate_id
+            WHERE r.client_id = ? AND i.status = 'booked' AND i.starts_at IS NOT NULL AND i.id <> ?
+              AND i.starts_at < ? + INTERVAL ? MINUTE AND i.starts_at + INTERVAL i.duration_min MINUTE > ? LIMIT 1",
+            [$clientId, $exceptInterview, $startsAt, $minutes, $startsAt]) ?: null;
     }
 
     // ---------------------------------------------------------------- slots
@@ -57,7 +75,12 @@ final class Interviews
     /** Free future slots for a role's round. */
     public function openSlots(int $roleId, int $round): array
     {
-        return $this->app->db->all('SELECT * FROM interview_slots WHERE role_id = ? AND round = ? AND interview_id IS NULL AND starts_at > NOW() + INTERVAL 30 MINUTE ORDER BY starts_at', [$roleId, $round]);
+        // A time already booked for another of this client's positions is gone too (17 Nov 2026: AdvantEdge gave the same
+        // times on Associate and Manager, and two candidates were booked for 18 Nov 4 pm with the same interviewer).
+        return $this->app->db->all('SELECT s.* FROM interview_slots s JOIN roles r ON r.id = s.role_id
+            WHERE s.role_id = ? AND s.round = ? AND s.interview_id IS NULL AND s.starts_at > NOW() + INTERVAL 30 MINUTE
+              AND NOT EXISTS (' . self::CLASH_SQL . ')
+            ORDER BY s.starts_at', [$roleId, $round]);
     }
 
     /** The next round for an application: one more than the last round that happened. */
@@ -138,6 +161,10 @@ final class Interviews
         if ($kind === 'in_person' && !$address) {
             return [false, 'Add the interview address, or set a default on the client.', 0];
         }
+        $at = date('Y-m-d H:i:00', $ts);
+        if ($x = $this->clashAt((int) $a['client_id'], $at, max(15, min(240, $duration)))) {
+            return [false, 'That time is already booked with this client: ' . $x['full_name'] . ' (' . $x['title'] . ') at ' . date('j M, g:i A', strtotime($x['starts_at'])) . '. Choose another time.', 0];
+        }
         $db->run("UPDATE interviews SET status = 'cancelled' WHERE application_id = ? AND round = ? AND status = 'choosing'", [$applicationId, $round]);
         $id = $db->insert('interviews', ['application_id' => $applicationId, 'round' => max(1, $round), 'kind' => $kind, 'status' => 'booked',
             'starts_at' => date('Y-m-d H:i:00', $ts), 'duration_min' => max(15, min(240, $duration)),
@@ -157,6 +184,12 @@ final class Interviews
         return $db->tx(function () use ($db, $iv, $slotId, $a) {
             if ($db->col('SELECT status FROM interviews WHERE id = ? FOR UPDATE', [$iv['id']]) !== 'choosing') {
                 return [false, 'This interview is already arranged.'];
+            }
+            // One booking at a time per client, so two candidates on different positions can't take the same time at once.
+            $db->col('SELECT id FROM clients WHERE id = ? FOR UPDATE', [$a['client_id']]);
+            $want = $db->one('SELECT * FROM interview_slots WHERE id = ?', [$slotId]);
+            if ($want && $this->clashAt((int) $a['client_id'], (string) $want['starts_at'], (int) $want['duration_min'], (int) $iv['id'])) {
+                return [false, 'Sorry, someone has just taken that time. Please choose another.'];
             }
             $ok = $db->run("UPDATE interview_slots SET interview_id = ? WHERE id = ? AND role_id = ? AND round = ? AND interview_id IS NULL AND starts_at > NOW()",
                 [$iv['id'], $slotId, $a['role_id'], $iv['round']])->rowCount();

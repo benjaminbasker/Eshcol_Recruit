@@ -89,8 +89,9 @@ foreach ($roles as $type => $roleId) {
     $iv->addSlots($roleId, 1, 'virtual', [date('Y-m-d 11:00:00', strtotime('+5 days'))], 30, 'test');
     $iv->invite($appId, 1, $owner);
     $all['interview invitation'] = $latest($cid, 'interview');
-    foreach (['virtual', 'in_person', 'phone'] as $k) {
-        [$okB] = $iv->book($appId, 1, $k, date('Y-m-d H:i', strtotime('+3 days')), 30, ['meeting_link' => 'https://meet.google.com/abc-defg-hij', 'address' => 'Plot 4, SIPCOT, Tiruvallur'], $owner);
+    foreach (['virtual', 'in_person', 'phone'] as $ki => $k) {
+        // One time each: a client can't have two interviews at once (17 Nov 2026).
+        [$okB] = $iv->book($appId, 1, $k, date('Y-m-d H:i', strtotime('+3 days') + $ki * 3600), 30, ['meeting_link' => 'https://meet.google.com/abc-defg-hij', 'address' => 'Plot 4, SIPCOT, Tiruvallur'], $owner);
         $all["call letter ($k)"] = $okB ? $latest($cid, 'interview') : '';
     }
     $db->run("UPDATE interviews SET starts_at = NOW() + INTERVAL 1 HOUR, reminded_at = NULL WHERE application_id = ? AND status = 'booked'", [$appId]);
