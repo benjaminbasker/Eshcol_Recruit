@@ -286,8 +286,45 @@ final class AiReading
     public function apply(int $readId, ?array $fields): array
     {
         $db = $this->app->db;
+        $read = $db->one('SELECT candidate_id FROM cv_ai_reads WHERE id = ?', [$readId]);
+        if (!$read) {
+            return [];
+        }
+        // Audit C1 follow-up (17 Nov 2026): one apply at a time per candidate, and the freshness check inside it, so an
+        // older reading that finishes late (or an old review-mode reading approved later) can't overwrite a newer one.
+        $lock = 'cvread_apply_' . (int) $read['candidate_id'];
+        if (!(int) $db->col('SELECT GET_LOCK(?, 30)', [$lock])) {
+            throw new \RuntimeException('busy: another CV reading for this candidate is being applied; try again in a minute.');
+        }
+        try {
+            return $this->applyLocked($readId, $fields);
+        } finally {
+            $db->col('SELECT RELEASE_LOCK(?)', [$lock]);
+        }
+    }
+
+    /**
+     * The newer reading of the same candidate that is already done, if any: a later CV file, or a later reading of the
+     * same file. Null when this reading is the newest. Older readings stay as history; they just aren't applied.
+     */
+    public function supersededBy(array $read): ?int
+    {
+        $id = $this->app->db->col("SELECT id FROM cv_ai_reads WHERE candidate_id = ? AND status = 'done' AND id <> ?
+              AND (COALESCE(cv_file_id, 0) > ? OR (COALESCE(cv_file_id, 0) = ? AND id > ?)) ORDER BY id DESC LIMIT 1",
+            [$read['candidate_id'], $read['id'], (int) ($read['cv_file_id'] ?? 0), (int) ($read['cv_file_id'] ?? 0), $read['id']]);
+        return $id ? (int) $id : null;
+    }
+
+    private function applyLocked(int $readId, ?array $fields): array
+    {
+        $db = $this->app->db;
         $read = $db->one('SELECT * FROM cv_ai_reads WHERE id = ?', [$readId]);
         if (!$read || $read['status'] !== 'done') {
+            return [];
+        }
+        if ($newer = $this->supersededBy($read)) {
+            $db->update('cv_ai_reads', ['error' => mb_substr('Not applied: a newer reading of their CV is in (#' . $newer . ').', 0, 300), 'updated_at' => date('Y-m-d H:i:s')], $readId);
+            Audit::log('cv_read_superseded', 'candidate', (int) $read['candidate_id'], ['read' => $readId, 'newer' => $newer]);
             return [];
         }
         $cid = (int) $read['candidate_id'];

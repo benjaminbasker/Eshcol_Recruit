@@ -251,6 +251,8 @@ $svc->housekeeping(11);
 $fin = $fEmails()[1] ?? null;
 $check('then the final email: "Are you still interested in the Accounts Officer role?"', $fin && $fin['subject'] === 'Are you still interested in the Accounts Officer role?' && str_contains($fin['html'], 'Are you still interested, Farah?'));
 $check('…with "Yes, complete my application" and a one-click "I\'m no longer interested"', $fin && str_contains($fin['html'], 'Yes, complete my application') && str_contains($fin['html'], "I&apos;m no longer interested") && preg_match('#/q/[A-Za-z0-9_-]+/no#', $fin['text']));
+$check('the link stays open 14 days after the final email (Benjamin, 17 Nov 2026)', $db->col('SELECT expires_at FROM questionnaires WHERE id = ?', [$fq['id']]) >= date('Y-m-d 23:59:59', strtotime('+14 days'))
+    && Questionnaires::openUntil('2026-11-17 15:10:00') === '2026-12-01 23:59:59');
 $db->run("UPDATE email_queue SET status = 'sent', sent_at = NOW() WHERE id = ?", [$fin['id']]);
 $db->run('UPDATE questionnaires SET final_at = NOW() - INTERVAL 10 DAY WHERE id = ?', [$fq['id']]);
 $svc->housekeeping(11);

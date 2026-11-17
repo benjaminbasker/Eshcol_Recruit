@@ -769,6 +769,15 @@ final class Questionnaires
 
     // ---------------------------------------------------------------- scheduled
 
+    /** How long the details link stays open after the last email we send about it (Benjamin, 17 Nov 2026). */
+    public const OPEN_DAYS_AFTER_LAST = 14;
+
+    /** The end of the 14th day after the last email (that day, 23:59:59). Pure. */
+    public static function openUntil(string $lastEmailAt): string
+    {
+        return date('Y-m-d 23:59:59', strtotime(substr($lastEmailAt, 0, 10) . ' +' . self::OPEN_DAYS_AFTER_LAST . ' days'));
+    }
+
     /**
      * Scheduled (hourly): the 48-hour reminder, the final email 48 hours later, and expiry.
      * Follow-ups only go between 9 am and 7 pm, India time. Returns a line for the log.
@@ -795,7 +804,9 @@ final class Questionnaires
                                   AND EXISTS (SELECT 1 FROM email_queue e WHERE e.id = q.email_id AND e.status = 'sent') LIMIT 100");
             foreach ($finals as $r) {
                 $this->email((int) $r['id'], 'final', null);
-                $db->run('UPDATE questionnaires SET final_at = NOW() WHERE id = ? OR parent_id = ?', [$r['id'], $r['id']]);
+                // The link stays open 14 days after the last email (Benjamin, 17 Nov 2026), whatever it was set to before.
+                $db->run('UPDATE questionnaires SET final_at = NOW(), expires_at = GREATEST(expires_at, ?) WHERE id = ? OR parent_id = ?',
+                    [self::openUntil(date('Y-m-d H:i:s')), $r['id'], $r['id']]);
             }
         }
         return ($expired || $reminders || $finals) ? count($reminders) . ' reminder(s) and ' . count($finals) . " final email(s) queued, $expired link(s) expired" : '';

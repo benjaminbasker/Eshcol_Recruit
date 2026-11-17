@@ -269,6 +269,45 @@ $outC4 = (new MailIntake($app, $paged))->run(3);
 $check("the next page is fetched, so the newer email is reached [$outC4]", count($pageCalls) === 2 && (bool) $db->col('SELECT 1 FROM mail_intake WHERE message_key = ?', [hash('sha256', "<c4new-$tag@x>")]) && str_starts_with($outC4, '1 new email'));
 $check('a "next page" pointing anywhere but Microsoft is never followed (the sign-in token stays safe)', !array_filter($pageCalls, fn ($u) => str_contains($u, 'evil.example')));
 
+echo "\nAudit C4 follow-up (17 Nov 2026): more pages of read emails than one run may follow\n";
+// 25 pages of emails already read, then a new one on page 26: a run stops at 20 pages and the next carries on.
+$newer = ['id' => 'c4late', 'internetMessageId' => "<c4late-$tag@x>", 'subject' => 'Hello again', 'from' => ['emailAddress' => ['address' => "yan.$tag@candidates.test", 'name' => 'Yan']],
+    'receivedDateTime' => $same, 'hasAttachments' => false, 'categories' => []];
+$calls2 = [];
+$deep = function (string $method, string $url, array $headers, ?string $body) use ($http, $seen, $newer, &$calls2): array {
+    if (str_contains($url, '/mailFolders/inbox/messages')) {
+        $calls2[] = $url;
+        $n = preg_match('/skiptoken=d(\d+)/', $url, $m) ? (int) $m[1] : 1;
+        $nextLink = 'https://graph.microsoft.com/v1.0/users/resume%40eshcolglobal.com/mailFolders/inbox/messages?$skiptoken=d' . ($n + 1);
+        return $n < 26 ? [200, json_encode(['value' => $seen, '@odata.nextLink' => $nextLink])] : [200, json_encode(['value' => [$newer]])];
+    }
+    return $http($method, $url, $headers, $body);
+};
+$db->run("DELETE FROM settings WHERE k = 'mail_intake_resume'");
+(new MailIntake($app, $deep))->run(3);
+$check('the first run reads its 20 pages and remembers where it stopped', count($calls2) === MailIntake::MAX_PAGES
+    && str_contains((string) $app->setting('mail_intake_resume'), 'skiptoken=d21'));
+$calls2 = [];
+$out2 = (new MailIntake($app, $deep))->run(3);
+$check("the next run carries on from page 21 (not from the start), so the new email is reached [$out2]", str_contains($calls2[0] ?? '', 'skiptoken=d21')
+    && (bool) $db->col('SELECT 1 FROM mail_intake WHERE message_key = ?', [hash('sha256', "<c4late-$tag@x>")]));
+$check('...and having read to the end, nothing is left to resume', (string) $app->setting('mail_intake_resume') === '');
+$db->run("UPDATE settings SET v = ? WHERE k = 'mail_intake_resume'", ['/users/resume%40eshcolglobal.com/mailFolders/inbox/messages?$skiptoken=gone']);
+$calls3 = [];
+$expired = function (string $method, string $url, array $headers, ?string $body) use ($http, &$calls3): array {
+    if (str_contains($url, '/mailFolders/inbox/messages')) {
+        $calls3[] = $url;
+        return str_contains($url, 'skiptoken=gone') ? [400, json_encode(['error' => ['message' => 'Invalid skip token']])] : [200, json_encode(['value' => []])];
+    }
+    return $http($method, $url, $headers, $body);
+};
+(new MailIntake($app, $expired))->run(3);
+$check('a continuation Microsoft no longer takes is dropped, and the run starts from the saved time', count($calls3) === 2 && str_contains($calls3[1], 'filter')
+    && (string) $app->setting('mail_intake_resume') === '');
+$check('only a page of this mailbox\'s inbox is ever resumed', MailIntake::validResume('/users/resume%40eshcolglobal.com/mailFolders/inbox/messages?$skiptoken=x', '/users/resume%40eshcolglobal.com')
+    && !MailIntake::validResume('/users/other%40x.com/mailFolders/inbox/messages?a', '/users/resume%40eshcolglobal.com')
+    && !MailIntake::validResume('https://evil.example/x', '/users/resume%40eshcolglobal.com'));
+
 $db->run("UPDATE settings SET v = '0' WHERE k = 'mail_intake_on'");
 $check('paused: nothing is read', (new MailIntake($app, $http))->run() === 'skipped (CV inbox not connected)');
 exit(0);

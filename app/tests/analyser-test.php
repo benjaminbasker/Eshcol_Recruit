@@ -37,6 +37,16 @@ $check('Future requirement: kept for later', A::decision('hold', 85, 'Future req
 $check('Not suitable and "Rejected: insufficient information": turned down', A::decision('fail', 80, 'Not suitable') === 'down' && A::decision('fail', 82, 'Rejected: insufficient information') === 'down');
 $check('Withdrew: their choice, counted apart', A::decision('fail', 90, 'Withdrew') === 'withdrew');
 $check('No response from candidate: their doing too, counted apart (16 Nov)', A::decision('fail', 92, 'No response from candidate') === 'withdrew');
+// Audit Q1 follow-up (17 Nov 2026): by the fixed code, not the name.
+$check('Q1: "Withdrew" renamed "Candidate declined" is still their choice (by its code)', A::decision('fail', 90, 'Candidate declined', 30, 'withdrew') === 'withdrew'
+    && A::decision('fail', 92, 'Went silent', 30, 'no_response') === 'withdrew');
+$check('Q1: "Not suitable" renamed "Withdrawn by us" is still turned down (by its code)', A::decision('fail', 80, 'Withdrawn by us', 30, 'not_suitable') === 'down');
+$appQ = \Eshcol\Ats\App::boot(cli: true);
+$check('Q1: Under review, No response and Awaiting reply have fixed codes (update 067)', \Eshcol\Ats\Services\Stages::id($appQ, 'review') !== null
+    && \Eshcol\Ats\Services\Stages::id($appQ, 'no_response') !== null && \Eshcol\Ats\Services\Stages::id($appQ, 'awaiting_reply') !== null);
+$check('Q1: every stage the rules need has its code (nothing to warn about)', \Eshcol\Ats\Services\Stages::missing($appQ) === []);
+$srcQ = (string) file_get_contents(dirname(__DIR__) . '/src/Services/Agreement.php') . file_get_contents(dirname(__DIR__) . '/src/Controllers/DashboardController.php');
+$check('Q1: no rule finds Shortlisted or Applied by its name any more', !str_contains($srcQ, "name LIKE 'Shortlist%'") && !str_contains($srcQ, "s.name = 'Applied'"));
 $check('Awaiting candidate\'s reply: not decided yet, with its own pink tag', A::decision('active', 25, "Awaiting candidate's reply") === 'open'
     && \Eshcol\Ats\Services\KeyFacts::stageTone("Awaiting candidate's reply", 'active') === 'st-await'
     && \Eshcol\Ats\Services\KeyFacts::stageTone('No response from candidate', 'fail') === 'st-withdrew');

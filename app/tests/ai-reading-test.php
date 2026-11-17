@@ -206,6 +206,21 @@ $check('the older CV is skipped without a call to Claude (no second charge)', $o
 $ai3->processNext();
 $check('the newer CV is read, and the reading is filed against it', $db->col('SELECT status FROM cv_ai_reads WHERE id = ?', [$newRead]) === 'done' && count($h3) === 1);
 $db->run('UPDATE cv_ai_reads SET status = ? WHERE id = ?', ['done', $readId]);
+
+echo "\nAudit C1 follow-up (17 Nov 2026): an older reading that comes back late\n";
+// The older reading finished after the newer one (or an old review-mode reading is approved later).
+$db->run("UPDATE cv_ai_reads SET status = 'done', error = NULL, fields = ?, applied_at = NULL WHERE id = ?", [json_encode(['full_name' => 'Old Late Name', 'current_title' => 'Old Title From Old CV']), $readId]);
+$nameNow = (string) $db->col('SELECT full_name FROM candidates WHERE id = ?', [$cid]);
+$titleNow = (string) $db->col('SELECT current_title FROM candidates WHERE id = ?', [$cid]);
+$ai4 = new AiReading($app);
+$check('the newer reading is found', $ai4->supersededBy($db->one('SELECT * FROM cv_ai_reads WHERE id = ?', [$readId])) === $newRead);
+$applied = $ai4->apply($readId, null);
+$check('applying the older reading changes nothing on the candidate', $applied === [] && $db->col('SELECT full_name FROM candidates WHERE id = ?', [$cid]) === $nameNow
+    && $db->col('SELECT current_title FROM candidates WHERE id = ?', [$cid]) === $titleNow);
+$check('...it stays as history, with why', str_contains((string) $db->col('SELECT error FROM cv_ai_reads WHERE id = ?', [$readId]), 'newer reading')
+    && $db->col('SELECT status FROM cv_ai_reads WHERE id = ?', [$readId]) === 'done');
+$check('the newest reading is never "superseded"', $ai4->supersededBy($db->one('SELECT * FROM cv_ai_reads WHERE id = ?', [$newRead])) === null);
+$check('applies are one at a time per candidate (a database lock)', str_contains((string) file_get_contents(dirname(__DIR__) . '/src/Services/AiReading.php'), "GET_LOCK(?, 30)"));
 $check('the five-minute job does nothing without a key', (new AiReading($app))->runBatch() === '' || \Eshcol\Ats\Secrets::has($app, 'anthropic_api_key'));
 $check('a deleted candidate takes their readings with them', (function () use ($app, $db, $scid) {
     (new Retention($app))->delete($scid, 'manual', false);

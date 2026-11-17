@@ -40,6 +40,15 @@ final class MailIntake
     private $http;
     private ?string $token = null;
 
+    /** Pages read per run at most (each up to the run's email limit). */
+    public const MAX_PAGES = 20;
+
+    /** A saved continuation link is used only when it is a page of this mailbox's inbox. Pure. */
+    public static function validResume(string $link, string $box): bool
+    {
+        return $link !== '' && str_starts_with($link, $box . '/mailFolders/inbox/messages?') && !preg_match('/\s/', $link) && strlen($link) < 4000;
+    }
+
     public function __construct(private readonly App $app, ?callable $http = null)
     {
         $this->http = $http ?? [$this, 'curl'];
@@ -97,18 +106,40 @@ final class MailIntake
         $cursor = $since;
         // Audit C4 (16 Nov 2026): follow Microsoft's "next page", so emails already read here (e.g. many with the same
         // time as the saved place) never hide newer ones. Up to $maxEmails new ones per run.
+        // C4 follow-up (17 Nov 2026): a run that stops early keeps Microsoft's continuation link and the next run carries
+        // on from it, so 20 pages of emails already read can never stall the inbox. Only a link for this mailbox's inbox
+        // is used; if Microsoft no longer takes it, the run starts again from the saved time.
+        $fresh = $url;
+        $resume = (string) ($this->app->setting('mail_intake_resume') ?? '');
+        $resuming = self::validResume($resume, $box);
+        if ($resuming) {
+            $url = $resume;
+        }
+        $resumeNext = null;
         $pages = 0;
-        while ($url !== null && $pages++ < 20) {
+        while ($url !== null && $pages++ < self::MAX_PAGES) {
+            $pageUrl = $url;
             [$code, $body] = $this->graph($cfg, 'GET', $url, null, ['Prefer: outlook.body-content-type="text"']);
+            if ($code !== 200 && $resuming) {
+                // The saved continuation has expired: forget it and start from the saved time this once.
+                $resuming = false;
+                $this->set('mail_intake_resume', '');
+                $url = $fresh;
+                $pages--;
+                continue;
+            }
             if ($code !== 200) {
                 $this->set('mail_intake_since', $cursor);
                 throw new \RuntimeException($this->graphError($code, $body, $cfg['mailbox']));
             }
+            $resuming = false;
             $page = (array) json_decode($body, true);
             $next = $page['@odata.nextLink'] ?? null;
             $url = is_string($next) && str_starts_with($next, self::GRAPH . '/') ? substr($next, strlen(self::GRAPH)) : null;
             foreach ((array) ($page['value'] ?? []) as $m) {
                 if ($counts['emails'] >= $maxEmails) {
+                    // Stopped part-way through this page: the next run reads this page again (those done are skipped).
+                    $resumeNext = $pageUrl;
                     $url = null;
                     break;
                 }
@@ -183,6 +214,11 @@ final class MailIntake
                 $this->tag($cfg, $box, $m);
             }
         }
+        // Out of pages with more to come: carry on from the next page next time. Read to the end: nothing to resume.
+        if ($url !== null && $resumeNext === null) {
+            $resumeNext = $url;
+        }
+        $this->set('mail_intake_resume', $resumeNext !== null && self::validResume($resumeNext, $box) ? $resumeNext : '');
         $this->set('mail_intake_since', $cursor);
         $this->set('mail_intake_last_ok', date('Y-m-d H:i:s'));
         if ($counts['emails']) {

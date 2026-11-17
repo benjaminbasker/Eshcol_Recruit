@@ -138,7 +138,7 @@ final class FitAssessor
         $rows = $this->app->db->all("SELECT r.id, r.code, r.title, r.status, r.qual_ladder, c.name AS client,
                 (SELECT COUNT(*) FROM role_requirements q WHERE q.role_id = r.id) AS reqs
             FROM roles r JOIN clients c ON c.id = r.client_id
-            WHERE r.id <> ? AND r.is_pool = 0", [(int) $role['id']]);
+            WHERE r.id <> ? AND r.is_pool = 0 AND " . \Eshcol\Ats\Access::roleFilter(\Eshcol\Ats\Auth::user(), 'r.id'), [(int) $role['id']]); // never a position hidden from you (audit S2)
         $words = fn (string $t) => array_values(array_diff(array_unique(preg_split('/[^a-z0-9]+/', mb_strtolower($t), -1, PREG_SPLIT_NO_EMPTY)),
             ['and', 'of', 'the', 'for', 'in', 'a', 'to', 'senior', 'junior', 'sr', 'jr', 'executive', 'officer', 'associate']));
         $mine = $words((string) $role['title']);
@@ -740,9 +740,11 @@ final class FitAssessor
                 continue;
             }
             try {
-                $requests[] = ['customID' => "fit-$id", 'params' => $this->request($id)];
+                $params = $this->request($id);
+                $requests[] = ['customID' => "fit-$id", 'params' => $params];
                 $role = $db->one('SELECT * FROM roles WHERE id = ?', [$row['role_id']]);
-                $sent[$id] = [$this->roleVersion($role), $this->cvIdFor((int) $db->col('SELECT candidate_id FROM fit_assessments WHERE id = ?', [$id]))];
+                // The fingerprint is taken from the very request sent (audit C2), so nothing can change in between.
+                $sent[$id] = [$this->roleVersion($role), $this->cvIdFor((int) $db->col('SELECT candidate_id FROM fit_assessments WHERE id = ?', [$id])), self::inputHash($params)];
             } catch (\RuntimeException $e) {
                 if (str_starts_with($e->getMessage(), 'stop:')) {
                     $db->run("UPDATE fit_assessments SET status = 'pending' WHERE status = 'reading' AND id IN (" . implode(',', array_merge([$id], array_keys($sent))) . ')');
@@ -769,8 +771,8 @@ final class FitAssessor
             return "paused: Claude did not take the batch ($why)";
         }
         $db->run("DELETE FROM settings WHERE k IN ('fit_batch_problem', 'fit_batch_problem_since', 'fit_batch_alerted')");
-        foreach ($sent as $id => [$version, $cvId]) {
-            $db->run("UPDATE fit_assessments SET status = 'batched', batch_id = ?, role_version = ?, sent_cv_id = ?, updated_at = NOW() WHERE id = ?", [$batch->id, $version, $cvId, $id]);
+        foreach ($sent as $id => [$version, $cvId, $hash]) {
+            $db->run("UPDATE fit_assessments SET status = 'batched', batch_id = ?, role_version = ?, sent_cv_id = ?, input_hash = ?, updated_at = NOW() WHERE id = ?", [$batch->id, $version, $cvId, $hash, $id]);
         }
         Audit::log('fit_batch_sent', null, null, ['batch' => $batch->id, 'n' => count($sent)]);
         return count($sent) . ' assessment(s) sent to Claude in a half-price batch';
@@ -783,14 +785,32 @@ final class FitAssessor
         return $id ? (int) $id : null;
     }
 
-    /** Did the role's requirements or the candidate's CV change after this assessment was sent? */
+    /**
+     * Did anything Claude was given change after this assessment was sent? With a fingerprint (update 066): today's
+     * request is built again and compared, so an edited CV text, job list, role, examples or instructions all count
+     * (audit C2, 17 Nov 2026). Without one (sent before 066): the role version and the CV file, as before.
+     */
     private function changedSince(array $row): bool
     {
         $role = $this->app->db->one('SELECT * FROM roles WHERE id = ?', [$row['role_id']]);
         if (!$role || ($row['role_version'] && $this->roleVersion($role) !== $row['role_version'])) {
             return true;
         }
+        if (!empty($row['input_hash']) && !empty($row['id'])) {
+            try {
+                return self::inputHash($this->request((int) $row['id'])) !== $row['input_hash'];
+            } catch (\RuntimeException) {
+                return true; // the inputs can't even be built now (no requirements, candidate gone): not the same
+            }
+        }
         return $row['sent_cv_id'] !== null && $this->cvIdFor((int) $row['candidate_id']) !== (int) $row['sent_cv_id'];
+    }
+
+    /** A fingerprint of exactly what goes to Claude: model, instructions, the message (role, CV, jobs) and answer format. Pure. */
+    public static function inputHash(array $params): string
+    {
+        return hash('sha256', json_encode([$params['model'] ?? null, $params['system'] ?? null, $params['messages'] ?? null, $params['outputConfig'] ?? null],
+            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PARTIAL_OUTPUT_ON_ERROR));
     }
 
     /**
@@ -891,7 +911,7 @@ final class FitAssessor
                         continue;
                     }
                     $fid = (int) $m[1];
-                    $row = $db->one('SELECT status, batch_id, role_version, sent_cv_id, role_id, candidate_id FROM fit_assessments WHERE id = ?', [$fid]);
+                    $row = $db->one('SELECT id, status, batch_id, role_version, sent_cv_id, input_hash, role_id, candidate_id FROM fit_assessments WHERE id = ?', [$fid]);
                     if (!$row || $row['status'] !== 'batched' || $row['batch_id'] !== $bid) {
                         continue;
                     }

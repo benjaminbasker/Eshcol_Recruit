@@ -14,6 +14,11 @@
 <div class="grid g2">
   <section class="card" id="stages">
     <h2>Pipeline stages</h2>
+    <?php $missingCodes = (new \Eshcol\Ats\Services\Migrator(\Eshcol\Ats\App::get()))->pending() ? [] : \Eshcol\Ats\Services\Stages::missing(\Eshcol\Ats\App::get()); ?>
+    <?php if ($missingCodes): // audit Q1 follow-up (17 Nov 2026): a stage the rules depend on has no fixed code ?>
+      <div class="flash error" role="alert">The app can't tell which stage is <b><?= e(implode(', ', array_map(fn ($c) => ucfirst(str_replace('_', ' ', $c)), $missingCodes))) ?></b>
+        (probably renamed before 16 Nov). Offer approval, joining records and reports rely on it. Tell your developer the stage's current name so it can be linked.</div>
+    <?php endif; ?>
     <p class="small muted">Rename them in your own words. Order decides the dropdown order. A "success" stage counts as a placement; "fail" stages drop to the bottom of a role's list.</p>
     <form method="post" action="/settings/stages"><?= csrf() ?>
       <table class="list" style="font-size:14px">

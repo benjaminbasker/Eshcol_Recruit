@@ -27,13 +27,16 @@ final class Agreement
     }
 
     /** Your decision, from the stage an application is at now. Pure: tested directly. */
-    public static function decision(string $kind, int $sort, string $name, int $shortlistedSort = 30): string
+    public static function decision(string $kind, int $sort, string $name, int $shortlistedSort = 30, ?string $code = null): string
     {
+        // By the stage's fixed code (audit Q1 follow-up, 17 Nov 2026): renaming "Withdrew" changes nothing. The name is
+        // only a fallback for a stage with no code.
+        $theirs = $code !== null ? in_array($code, [Stages::WITHDREW, Stages::NO_RESPONSE], true) : (stripos($name, 'withdr') === 0 || stripos($name, 'no response') === 0);
         return match (true) {
             $kind === 'success' => 'forward',
             $kind === 'hold' => 'later',
             // "No response from candidate" (16 Nov 2026) is their doing, like Withdrew: not your turning them down.
-            $kind === 'fail' => stripos($name, 'withdr') === 0 || stripos($name, 'no response') === 0 ? 'withdrew' : 'down',
+            $kind === 'fail' => $theirs ? 'withdrew' : 'down',
             $sort >= $shortlistedSort => 'forward',
             default => 'open',
         };
@@ -83,8 +86,8 @@ final class Agreement
     public function forRole(int $roleId): array
     {
         $db = $this->app->db;
-        $shortSort = (int) ($db->col("SELECT sort FROM stages WHERE kind = 'active' AND name LIKE 'Shortlist%' ORDER BY sort LIMIT 1") ?: 30);
-        $rows = $db->all("SELECT a.id, a.candidate_id, a.stage_reason, c.full_name, f.band, f.score, s.kind, s.sort, s.name AS stage,
+        $shortSort = (int) ($db->col('SELECT sort FROM stages WHERE id = ?', [(int) (Stages::id($this->app, Stages::SHORTLISTED) ?? 0)]) ?: 30);
+        $rows = $db->all("SELECT a.id, a.candidate_id, a.stage_reason, c.full_name, f.band, f.score, s.kind, s.sort, s.name AS stage, s.code AS stage_code,
                 (SELECT i.decision FROM shortlist_items i WHERE i.application_id = a.id AND i.decision IS NOT NULL ORDER BY i.id DESC LIMIT 1) AS client
             FROM fit_assessments f JOIN applications a ON a.id = f.application_id JOIN candidates c ON c.id = a.candidate_id JOIN stages s ON s.id = a.stage_id
             WHERE f.role_id = ? AND f.status = 'done' AND f.band IS NOT NULL", [$roleId]);
@@ -95,7 +98,7 @@ final class Agreement
         $differ = [];
         foreach ($rows as $r) {
             $band = in_array($r['band'], self::BANDS, true) ? $r['band'] : 'Weak';
-            $d = self::decision((string) $r['kind'], (int) $r['sort'], (string) $r['stage'], $shortSort);
+            $d = self::decision((string) $r['kind'], (int) $r['sort'], (string) $r['stage'], $shortSort, $r['stage_code'] ?? null);
             $grid[$band][$d]++;
             if ($r['client']) {
                 $grid[$band]['client_' . $r['client']]++;

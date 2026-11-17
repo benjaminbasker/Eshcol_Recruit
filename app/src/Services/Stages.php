@@ -19,6 +19,25 @@ final class Stages
     public const NOT_SUITABLE = 'not_suitable';
     public const WITHDREW = 'withdrew';
     public const FUTURE = 'future';
+    // Update 067 (audit Q1 follow-up, 17 Nov 2026).
+    public const REVIEW = 'review';
+    public const NO_RESPONSE = 'no_response';
+    public const AWAITING = 'awaiting_reply';
+
+    /** Codes every install must have: the app's rules (offer approval, joining, shortlists, reports) depend on them. */
+    public const REQUIRED = [self::SHORTLISTED, self::SUBMITTED, self::INTERVIEW, self::OFFER, self::JOINED, self::NOT_SUITABLE, self::WITHDREW, self::FUTURE];
+
+    /** Required codes no stage carries (e.g. a stage renamed before update 059): shown as a warning in Settings. */
+    public static function missing(App $app): array
+    {
+        return array_values(array_diff(self::REQUIRED, array_keys(self::map($app))));
+    }
+
+    /** The stage's own decision, not the candidate's doing: Withdrew and No response are theirs. */
+    public static function isTheirChoice(App $app, int $stageId): bool
+    {
+        return self::is($app, $stageId, self::WITHDREW) || self::is($app, $stageId, self::NO_RESPONSE);
+    }
 
     private const DEFAULT_NAMES = [
         'shortlisted' => 'Shortlisted', 'submitted' => 'Submitted to client', 'interview' => 'Client interview', 'offer' => 'Offer made',

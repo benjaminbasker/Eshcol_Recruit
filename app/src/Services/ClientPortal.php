@@ -210,7 +210,7 @@ final class ClientPortal
     public function candidates(array $contact, int $roleId): array
     {
         $db = $this->app->db;
-        $rows = $db->all("SELECT i.*, s.mode, s.show_salary, s.sent_at, a.candidate_id, st.name AS stage, st.kind AS stage_kind, cd.email AS c_email, cd.phone AS c_phone
+        $rows = $db->all("SELECT i.*, s.mode, s.show_salary, s.sent_at, a.candidate_id, st.name AS stage, st.kind AS stage_kind, st.code AS stage_code, cd.email AS c_email, cd.phone AS c_phone
             FROM shortlist_items i JOIN shortlists s ON s.id = i.shortlist_id JOIN roles r ON r.id = s.role_id
             JOIN applications a ON a.id = i.application_id JOIN stages st ON st.id = a.stage_id JOIN candidates cd ON cd.id = a.candidate_id
             WHERE s.role_id = ? AND r.client_id = ? AND s.status IN ('sent','viewed','answered')
@@ -241,10 +241,10 @@ final class ClientPortal
         $iv = $r['interview'] ?? null;
         return match (true) {
             $kind === 'success' => ['joined', 'Joined'],
-            $kind === 'fail' && str_starts_with($stage, 'Withdr') => ['closed', 'Withdrew'],
+            $kind === 'fail' && (isset($r['stage_code']) ? in_array($r['stage_code'], ['withdrew', 'no_response'], true) : str_starts_with($stage, 'Withdr')) => ['closed', 'Withdrew'],
             $kind === 'fail' => ['closed', 'No longer in process'],
             $kind === 'hold' => ['hold', 'On hold'],
-            str_starts_with($stage, 'Offer') => ['offer', 'Offer made'],
+            (isset($r['stage_code']) ? $r['stage_code'] === 'offer' : str_starts_with($stage, 'Offer')) => ['offer', 'Offer made'],
             $iv && $iv['status'] === 'booked' && $iv['starts_at'] => ['interview', 'Interview on ' . date('D j M, g:i a', strtotime((string) $iv['starts_at']))],
             $iv && $iv['status'] === 'choosing' => ['interview', 'Choosing an interview time'],
             $iv && $iv['status'] === 'no_show' => ['interview', 'Did not attend the interview'],

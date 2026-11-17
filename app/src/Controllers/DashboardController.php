@@ -31,7 +31,7 @@ final class DashboardController extends Controller
             SELECT r.id, r.title, r.code, r.location, r.status, c.name AS client, r.client_id, c.logo_path, c.logo_updated_at, r.target_date,
                    COUNT(a.id) AS total,
                    SUM(a.score >= r.score_threshold) AS above,
-                   SUM(s.name = 'Applied') AS fresh,
+                   SUM(s.kind = 'active' AND s.sort = (SELECT MIN(s0.sort) FROM stages s0 WHERE s0.kind = 'active' AND s0.is_active = 1)) AS fresh,
                    DATEDIFF(CURDATE(), COALESCE(r.opened_at, DATE(r.created_at))) AS age_days
             FROM roles r
             JOIN clients c ON c.id = r.client_id

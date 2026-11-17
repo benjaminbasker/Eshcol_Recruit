@@ -145,6 +145,20 @@ $_POST['role_id'] = $own;
 $check('a form that names the private position is refused', !Access::allowsRoute($R, $C . 'CandidateController', 'addToRole', [$cid]) && !Access::allowsRoute($R, $C . 'UploadController', 'startBatch', []));
 $check('...but the hiring manager may use it', Access::allowsRoute($H, $C . 'CandidateController', 'addToRole', [$cid]));
 $_POST = [];
+// Audit S2 follow-up (17 Nov 2026): other fields that name a position.
+$_POST = ['owner_type' => 'role', 'owner_id' => $own, 'kind' => 'jd'];
+$check('S2: uploading a document onto the private position (owner_type=role, owner_id) is refused', !Access::allowsRoute($R, $C . 'DocumentController', 'upload', []));
+$check('...a document on a client is not a position, so it isn\'t blocked by this rule', (function () use ($R, $C, $own) { $_POST = ['owner_type' => 'client', 'owner_id' => $own]; return Access::allowsRoute($R, $C . 'DocumentController', 'upload', []); })());
+$_POST = ['from' => $own];
+$check('S2: copying requirements FROM the private position into a visible one is refused', !Access::allowsRoute($R, $C . 'FitController', 'copy', [$place]));
+$check('...the hiring manager and the owner may', Access::allowsRoute($H, $C . 'FitController', 'copy', [$place]) && Access::allowsRoute($O, $C . 'FitController', 'copy', [$place]));
+$_POST = ['from' => $staff];
+$check('...copying from a position they can see is fine', Access::allowsRoute($R, $C . 'FitController', 'copy', [$place]));
+$check('postedRoleIds reads role_id, owner_id (role documents) and "from" (copy only)', Access::postedRoleIds('FitController::copy', ['from' => 7, 'role_id' => 3]) === [3, 7]
+    && Access::postedRoleIds('DocumentController::upload', ['owner_type' => 'role', 'owner_id' => 9]) === [9]
+    && Access::postedRoleIds('DocumentController::upload', ['owner_type' => 'client', 'owner_id' => 9]) === []
+    && Access::postedRoleIds('OtherController::x', ['from' => 7]) === []);
+$_POST = [];
 // Audit S4: the Candidates list's positions column leaves out the private position for that recruiter.
 $_SESSION['uid'] = $rec;
 $kfRec = (new \Eshcol\Ats\Services\KeyFacts($app))->forCandidates([$cid]);

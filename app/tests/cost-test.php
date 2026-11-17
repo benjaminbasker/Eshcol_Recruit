@@ -211,6 +211,26 @@ $check("not scored against the changed role: back in the queue for the next half
 $check('...and what it cost still counts', abs($fit->costThisMonth() - $costBefore - 0.0125) < 0.00001);
 $db->run('UPDATE roles SET title = ? WHERE id = ?', [$titleWas, $f1['role_id']]);
 
+echo "\nAudit C2 follow-up (17 Nov 2026): the CV text is corrected while a batch is out (same CV file)\n";
+(new FitAssessor($app, $client([$batchJson('in_progress')])))->submitBatch();
+$f1c = $db->one('SELECT candidate_id, input_hash, sent_cv_id FROM fit_assessments WHERE id = ?', [$ids[1]]);
+$check('the batch keeps a fingerprint of exactly what Claude was sent', strlen((string) $f1c['input_hash']) === 64);
+$cvRow = $db->one('SELECT id, text FROM cv_files WHERE candidate_id = ? AND text IS NOT NULL ORDER BY id DESC LIMIT 1', [$f1c['candidate_id']]);
+$db->run('UPDATE cv_files SET text = ? WHERE id = ?', [$cvRow['text'] . "\nCorrected: GST returns filed monthly.", $cvRow['id']]);
+$costBefore = $fit->costThisMonth();
+$out = (new FitAssessor($app, $client([$batchJson('ended'), new Response(200, ['Content-Type' => 'application/x-jsonl'], json_encode($late) . "\n")])))->collectBatches();
+$f1d = $db->one('SELECT status, batch_id, sent_cv_id FROM fit_assessments WHERE id = ?', [$ids[1]]);
+$check("same CV file, different text: not accepted, back in the queue [$out]", (int) $f1d['sent_cv_id'] === (int) $cvRow['id'] && $f1d['status'] === 'pending' && $f1d['batch_id'] === null);
+$check('...and what it cost still counts', abs($fit->costThisMonth() - $costBefore - 0.0125) < 0.00001);
+$db->run('UPDATE cv_files SET text = ? WHERE id = ?', [$cvRow['text'], $cvRow['id']]);
+(new FitAssessor($app, $client([$batchJson('in_progress')])))->submitBatch();
+$out = (new FitAssessor($app, $client([$batchJson('ended'), new Response(200, ['Content-Type' => 'application/x-jsonl'], json_encode($late) . "\n")])))->collectBatches();
+$check("nothing changed: the result is accepted [$out]", $db->col('SELECT status FROM fit_assessments WHERE id = ?', [$ids[1]]) === 'done');
+$check('the fingerprint is the same for the same inputs and changes with any of them', FitAssessor::inputHash(['model' => 'm', 'system' => 's', 'messages' => [['content' => 'cv']]])
+    === FitAssessor::inputHash(['model' => 'm', 'system' => 's', 'messages' => [['content' => 'cv']]])
+    && FitAssessor::inputHash(['model' => 'm', 'system' => 's', 'messages' => [['content' => 'cv']]]) !== FitAssessor::inputHash(['model' => 'm', 'system' => 's', 'messages' => [['content' => 'cv!']]]));
+$db->run("UPDATE fit_assessments SET status = 'pending', score = NULL WHERE id = ?", [$ids[1]]);
+
 $okMsg = fn (string $stop = 'end_turn', ?array $content = null) => new Response(200, ['Content-Type' => 'application/json'], json_encode(['id' => 'msg_s', 'type' => 'message', 'role' => 'assistant',
     'model' => 'claude-sonnet-5-5', 'content' => $content ?? [['type' => 'text', 'text' => json_encode($reply)]], 'stop_reason' => $stop, 'stop_sequence' => null,
     'usage' => ['input_tokens' => 5000, 'output_tokens' => 1500]]));

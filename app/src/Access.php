@@ -152,9 +152,8 @@ final class Access
             if (!$hidden) {
                 return true;
             }
-            // A position chosen in a form (add to a position, upload to a position) counts too.
-            $posted = (int) ($_POST['role_id'] ?? 0);
-            if ($posted > 0 && in_array($posted, $hidden, true)) {
+            // A position named in a form counts too, under whatever field the form uses (audit S2, 17 Nov 2026).
+            if (array_intersect(self::postedRoleIds($key), $hidden)) {
                 return false;
             }
             if (!isset($args[0]) || !is_int($args[0])) {
@@ -170,8 +169,33 @@ final class Access
         if (!in_array($key, self::ALLOWED, true)) {
             return false;
         }
+        // Positions named in the form must be theirs too (audit S2).
+        $mine = self::roleIds((int) $user['id']);
+        foreach (self::postedRoleIds($key) as $rid) {
+            if (!in_array($rid, $mine, true)) {
+                return false;
+            }
+        }
         $kind = self::KINDS[$key] ?? 'none';
         return $kind === 'none' || self::allows($user, $kind, (int) ($args[0] ?? 0));
+    }
+
+    /**
+     * Every position a submitted form refers to (audit S2, 17 Nov 2026): role_id (add to / upload to a position),
+     * owner_id when owner_type is "role" (a document on a position), and "from" on the requirements copy.
+     * @return list<int>
+     */
+    public static function postedRoleIds(string $key, ?array $post = null): array
+    {
+        $p = $post ?? $_POST;
+        $ids = [(int) ($p['role_id'] ?? 0)];
+        if (($p['owner_type'] ?? '') === 'role') {
+            $ids[] = (int) ($p['owner_id'] ?? 0);
+        }
+        if ($key === 'FitController::copy') {
+            $ids[] = (int) ($p['from'] ?? 0);
+        }
+        return array_values(array_unique(array_filter($ids, fn ($i) => $i > 0)));
     }
 
     /** May this user see this record? Always yes for owners and recruiters. */

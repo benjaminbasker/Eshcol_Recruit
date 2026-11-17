@@ -45,7 +45,7 @@ final class StageMover
         }
         $future = Stages::is($this->app, $to, Stages::FUTURE);
         $forward = !$future && $toStage['kind'] === 'active'
-            && (Shortlists::isShortlisted($this->app, $to) || preg_match('/review|screen/i', (string) $toStage['name']));
+            && (Shortlists::isShortlisted($this->app, $to) || (Stages::id($this->app, Stages::REVIEW) !== null ? Stages::is($this->app, $to, Stages::REVIEW) : (bool) preg_match('/review|screen/i', (string) $toStage['name'])));
         if (!$future && !$forward) {
             return [];
         }
