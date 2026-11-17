@@ -115,10 +115,12 @@ final class CandidateController extends Controller
         }
         if ($q !== '') {
             $digits = preg_replace('/\D/', '', $q);
-            $where[] = '(c.full_name LIKE ? OR c.email_norm LIKE ? ' . (strlen($digits) >= 6 ? 'OR c.phone_norm LIKE ? ' : '') .
+            [$nwSql, $nwArgs] = name_words_sql('c.full_name', $q); // each word anywhere in the name (17 Nov 2026)
+            $where[] = '(c.full_name LIKE ? OR ' . $nwSql . ' OR c.email_norm LIKE ? ' . (strlen($digits) >= 6 ? 'OR c.phone_norm LIKE ? ' : '') .
                 'OR c.id IN (SELECT candidate_id FROM cv_files WHERE MATCH(text) AGAINST (? IN NATURAL LANGUAGE MODE)))';
             $like = '%' . addcslashes($q, '%_\\') . '%';
-            array_push($args, $like, mb_strtolower($like));
+            array_push($args, $like, ...$nwArgs);
+            $args[] = mb_strtolower($like);
             if (strlen($digits) >= 6) {
                 $args[] = '%' . $digits . '%';
             }

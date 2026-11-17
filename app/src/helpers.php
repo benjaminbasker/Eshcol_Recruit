@@ -21,6 +21,22 @@ function lpa(mixed $v): string
 }
 
 /**
+ * A name search that matches each word wherever it is (17 Nov 2026): "Shubham Satpute" finds
+ * "Shubham Annasaheb Satpute", and "Satpute Shubham" too. Returns [SQL, args] for "$col has every word",
+ * or ['0', []] when the query has fewer than two words (the plain phrase search covers those).
+ * @return array{0: string, 1: list<string>}
+ */
+function name_words_sql(string $col, string $q): array
+{
+    $words = array_values(array_filter(preg_split('/[\s.,]+/u', trim($q)) ?: [], fn ($w) => mb_strlen($w) >= 1));
+    if (count($words) < 2) {
+        return ['0', []];
+    }
+    $words = array_slice($words, 0, 6);
+    return ['(' . implode(' AND ', array_fill(0, count($words), "$col LIKE ?")) . ')', array_map(fn ($w) => '%' . addcslashes($w, '%_\\') . '%', $words)];
+}
+
+/**
  * A candidate's stage as coloured tags, for any list (17 Nov 2026): "Accounting Associate · Shortlisted".
  * With $roleId, only that position's stage. Call prime_stages() with the list's ids first: one query, not one per row.
  */

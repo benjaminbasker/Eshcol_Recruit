@@ -205,6 +205,9 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
 <section class="tab-panel" id="tab-pipeline" data-panel="pipeline">
   <?php // One candidate table with tabs (17 Nov 2026): Responded, Yet to respond, Shortlisted, Found in database, Everyone.
   $tabUrl = fn (string $w): string => '/roles/' . (int) $role['id'] . '?who=' . $w . '#tab-pipeline'; ?>
+  <?php if (!$isPool && ((\Eshcol\Ats\Auth::user()['role'] ?? '') === 'owner')): ?>
+    <p class="small" style="margin:0 0 8px;text-align:right"><a href="/roles/<?= (int) $role['id'] ?>/screen"><?= icon('check', 'sm') ?> Screening rules: check who doesn't meet them</a></p>
+  <?php endif; ?>
   <nav class="stage-tabs who-tabs" aria-label="Candidates">
     <a href="<?= $tabUrl('responded') ?>" class="w-resp<?= $who === 'responded' ? ' on' : '' ?><?= $responded ? '' : ' zero' ?>"<?= $who === 'responded' ? ' aria-current="page"' : '' ?>>✓ Responded, ranked <b>(<?= count($responded) ?>)</b></a>
     <a href="<?= $tabUrl('waiting') ?>" class="w-wait<?= $who === 'waiting' ? ' on' : '' ?><?= $waitingList ? '' : ' zero' ?>"<?= $who === 'waiting' ? ' aria-current="page"' : '' ?>>✉ Yet to respond, ranked <b>(<?= count($waitingList) ?>)</b></a>

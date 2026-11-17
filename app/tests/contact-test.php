@@ -64,4 +64,10 @@ $check('a leading 0 is dropped', tel_link('09876543210') === 'tel:+919876543210'
 $check('another country\'s number written with + is kept', tel_link('+971 50 123 4567') === 'tel:+971501234567');
 $check('an Indian landline with its 0 code (044) gets +91 too', tel_link('044-2345 6789') === 'tel:+914423456789');
 $check('anything else is passed on as its digits', tel_link('2345 6789') === 'tel:23456789');
+echo "\nName search matches each word (17 Nov 2026: \"Shubham Satpute\" should find \"Shubham Annasaheb Satpute\")\n";
+[$nwS, $nwA] = name_words_sql('full_name', 'Shubham  Satpute');
+$check('two words: both must be in the name, anywhere', $nwS === '(full_name LIKE ? AND full_name LIKE ?)' && $nwA === ['%Shubham%', '%Satpute%']);
+$check('one word: left to the plain search', name_words_sql('full_name', 'Shubham') === ['0', []]);
+$check('dots and commas split words ("Satpute, S.")', name_words_sql('c.full_name', 'Satpute, S.')[1] === ['%Satpute%', '%S%']);
+$check('a % or _ typed in is taken literally', name_words_sql('full_name', 'a_b 50%')[1] === ['%a\_b%', '%50\%%']);
 echo "\n$ok passed, $bad failed\n";

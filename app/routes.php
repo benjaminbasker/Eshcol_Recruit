@@ -66,6 +66,8 @@ $router->post('/roles/{id}/rules/{sid}', [\Eshcol\Ats\Controllers\FitController:
 $router->post('/roles/{id}/fair-check', [\Eshcol\Ats\Controllers\FitController::class, 'fairCheck']);
 $router->post('/roles/{id}/add-all',[\Eshcol\Ats\Controllers\FitController::class, 'addAll']);
 $router->post('/roles/{id}/found', [RoleController::class, 'found']);
+$router->get('/roles/{id}/screen', [RoleController::class, 'screen']);
+$router->post('/roles/{id}/screen', [RoleController::class, 'screen']);
 
 // Categories (13 Nov 2026): field of work, seniority, where they'd work; the trial and the category test.
 $router->get('/settings/categories', [\Eshcol\Ats\Controllers\CategoryController::class, 'settings']);

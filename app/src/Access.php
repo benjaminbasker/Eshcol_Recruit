@@ -22,7 +22,7 @@ final class Access
     public const KINDS = [
         'ClientController::show' => 'none', 'ClientController::edit' => 'none', 'ClientController::logo' => 'none', 'ClientController::update' => 'none',
         'ClientController::addContact' => 'none', 'ClientController::portalAccess' => 'none',
-        'RoleController::show' => 'role', 'RoleController::edit' => 'role', 'RoleController::update' => 'role', 'RoleController::rescore' => 'role',
+        'RoleController::show' => 'role', 'RoleController::screen' => 'role', 'RoleController::edit' => 'role', 'RoleController::update' => 'role', 'RoleController::rescore' => 'role',
         'RoleController::matches' => 'role', 'RoleController::addCandidate' => 'role', 'RoleController::found' => 'role',
         'PostingController::show' => 'role',
         'FitController::save' => 'role', 'FitController::copy' => 'role', 'FitController::suggest' => 'role', 'FitController::queue' => 'role',

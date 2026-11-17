@@ -32,9 +32,10 @@ final class SearchController extends Controller
         }
         $like = '%' . addcslashes($q, '%_\\') . '%';
         $digits = preg_replace('/\D/', '', $q);
-        $cands = $this->db->all('SELECT id, full_name, current_title FROM candidates WHERE (full_name LIKE ? OR email_norm LIKE ?' .
-            (strlen($digits) >= 6 ? ' OR phone_norm LIKE ?' : '') . ')' . $cf . ' ORDER BY updated_at DESC LIMIT 6',
-            array_merge([$like, mb_strtolower($like)], strlen($digits) >= 6 ? ['%' . $digits . '%'] : []));
+        [$nwSql, $nwArgs] = name_words_sql('full_name', $q); // each word anywhere in the name (17 Nov 2026)
+        $cands = $this->db->all('SELECT id, full_name, current_title FROM candidates WHERE (full_name LIKE ? OR ' . $nwSql . ' OR email_norm LIKE ?' .
+            (strlen($digits) >= 6 ? ' OR phone_norm LIKE ?' : '') . ')' . $cf . ' ORDER BY full_name LIKE ? DESC, updated_at DESC LIMIT 6',
+            array_merge([$like], $nwArgs, [mb_strtolower($like)], strlen($digits) >= 6 ? ['%' . $digits . '%'] : [], [$like]));
         prime_stages(array_column($cands, 'id'));
         foreach ($cands as $c) {
             $out[] = $this->cand($c);

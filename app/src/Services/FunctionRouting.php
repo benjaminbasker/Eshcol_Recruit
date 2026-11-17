@@ -33,6 +33,7 @@ final class FunctionRouting
         'outside_band' => 'Outside the experience range', 'experience_unknown' => 'Experience not known', 'not_categorised' => 'Not categorised yet',
         'blocked' => 'Do not contact, or marked unreliable', 'no_cv_text' => 'No readable CV yet',
         'band_elsewhere' => "Fits another position's band instead", 'no_routing' => "Position doesn't take routed CVs",
+        'not_qualified' => 'Not a B.Com',
     ];
 
     /**
@@ -109,6 +110,15 @@ final class FunctionRouting
                 return ['outside_band', round($m / 12, 1) . " yrs: outside this position's experience range"];
             }
         }
+        // The B.Com rule (17 Nov 2026) on positions that require B.Com: a known non-commerce degree is out.
+        $qualNote = '';
+        if (QualificationGate::requiresBcom($this->qualCriteria((int) ($role['id'] ?? 0)))) {
+            [$qv, $qwhy] = QualificationGate::verdict($cand['qualifications'] ?? null);
+            if ($qv === 'fail') {
+                return ['not_qualified', $qwhy . '; this position needs B.Com'];
+            }
+            $qualNote = $qv === 'confirm' ? $qwhy : '';
+        }
         [$where, $city] = $this->whereFrom($role, $cand, $cat);
         $scope = self::scopeOf($role);
         $place = trim((string) $role['location']);
@@ -122,7 +132,7 @@ final class FunctionRouting
             $where === 'no' => "from another city ($city)",
             default => '',
         };
-        return ['pipeline', $note];
+        return ['pipeline', implode('; ', array_filter([$note, $qualNote]))];
     }
 
     /**
@@ -160,6 +170,76 @@ final class FunctionRouting
             }
         }
         return [array_intersect($prefs, $places) ? 'prefers' : 'no', $city];
+    }
+
+    /** @var array<int, list<string>> role id => its qualification criteria */
+    private array $quals = [];
+
+    /** A position's qualification criteria ("BCom"), remembered for the request. */
+    private function qualCriteria(int $roleId): array
+    {
+        if ($roleId <= 0) {
+            return [];
+        }
+        return $this->quals[$roleId] ??= array_column($this->app->db->all("SELECT value FROM role_criteria WHERE role_id = ? AND kind = 'qualification'", [$roleId]), 'value');
+    }
+
+    /**
+     * The screening rules on one application (17 Nov 2026): the B.Com rule and "local candidates only".
+     * [result, reason] when it fails one ('not_qualified' or 'other_city'), else null.
+     */
+    public function screenFail(array $cand, ?array $cat, array $role): ?array
+    {
+        if (QualificationGate::requiresBcom($this->qualCriteria((int) $role['id']))) {
+            [$qv, $qwhy] = QualificationGate::verdict($cand['qualifications'] ?? null);
+            if ($qv === 'fail') {
+                return ['not_qualified', ucfirst($qwhy) . '; this position needs B.Com'];
+            }
+        }
+        if (self::scopeOf($role) === 'local') {
+            [$where, $city] = $this->whereFrom($role, $cand, $cat);
+            if ($where === 'no') {
+                return ['other_city', "Lives in $city; this position takes local candidates only"];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Everyone still being considered on a position (an active stage before Shortlisted: Applied, Under review,
+     * Awaiting their reply) who fails the screening rules. With $apply, each is moved to Not suitable with the reason
+     * (no email goes to anyone). Returns [app, candidate, name, stage, reason, rule] for each.
+     */
+    public function screenPosition(int $roleId, bool $apply, int $userId): array
+    {
+        $db = $this->app->db;
+        $role = $db->one('SELECT * FROM roles WHERE id = ? AND is_pool = 0', [$roleId]);
+        $ns = Stages::id($this->app, Stages::NOT_SUITABLE);
+        if (!$role || !$ns) {
+            return [];
+        }
+        $out = [];
+        $mover = new StageMover($this->app);
+        foreach ($db->all("SELECT a.*, s.name AS stage_name, c.full_name FROM applications a JOIN stages s ON s.id = a.stage_id JOIN candidates c ON c.id = a.candidate_id
+                WHERE a.role_id = ? AND s.kind = 'active' ORDER BY c.full_name", [$roleId]) as $a) {
+            if (Shortlists::isShortlisted($this->app, (int) $a['stage_id'])) {
+                continue;
+            }
+            $cand = $db->one('SELECT * FROM candidates WHERE id = ?', [$a['candidate_id']]);
+            $fail = $this->screenFail($cand, $this->cat->current((int) $a['candidate_id']), $role);
+            if (!$fail) {
+                continue;
+            }
+            $out[] = ['app' => (int) $a['id'], 'candidate' => (int) $a['candidate_id'], 'name' => (string) $a['full_name'], 'stage' => (string) $a['stage_name'], 'reason' => $fail[1], 'rule' => $fail[0]];
+            if ($apply) {
+                $mover->move($a, (int) $ns, $fail[1], $userId, true);
+                $db->run('UPDATE applications SET fit_note = ? WHERE id = ?', [mb_substr('Screened out: ' . $fail[1], 0, 255), $a['id']]);
+            }
+        }
+        if ($apply && $out) {
+            Audit::log('screening_applied', 'role', $roleId, ['moved' => count($out)]);
+        }
+        return $out;
     }
 
     /** The position's city and the other places listed on it, as the dictionary names them (lower case). */
@@ -210,6 +290,7 @@ final class FunctionRouting
         }
         $first = (int) $db->col("SELECT id FROM stages WHERE kind = 'active' AND is_active = 1 ORDER BY sort LIMIT 1");
         $hold = (int) $db->col("SELECT id FROM stages WHERE kind = 'hold' AND is_active = 1 ORDER BY sort LIMIT 1");
+        $notSuitable = (int) (Stages::id($this->app, Stages::NOT_SUITABLE) ?? 0);
 
         // 1. Positions they applied for themselves: someone from another city on a local-only position is parked.
         $applied = $db->all("SELECT a.*, r.title, r.location, r.location_scope, r.exp_min, r.exp_max, r.exp_allow_below, r.exp_allow_above, r.work_mode, r.function_codes, r.id AS rid
@@ -226,11 +307,13 @@ final class FunctionRouting
             $role = ['id' => (int) $a['rid']] + $a;
             [$res, $why] = $this->decide($cand, $cat, $role);
             $settled = $settled || $res === 'pipeline';
-            if ($res === 'other_city' && $hold && (int) $a['stage_id'] === $first) {
+            // Benjamin, 17 Nov 2026: another city on a local-only position, or not a B.Com where B.Com is needed, is
+            // Not suitable straight away (no longer parked as Future requirement). Still filed in their pool below.
+            if (in_array($res, ['other_city', 'not_qualified'], true) && $notSuitable && (int) $a['stage_id'] === $first) {
                 $reason = ucfirst($why) . '.';
-                $db->update('applications', ['stage_id' => $hold, 'stage_reason' => mb_substr($reason, 0, 255), 'stage_reason_at' => date('Y-m-d H:i:s'), 'fit_note' => mb_substr("Parked: $why", 0, 255)], (int) $a['id']);
-                $db->insert('stage_history', ['application_id' => $a['id'], 'from_stage_id' => $first, 'to_stage_id' => $hold, 'user_id' => null, 'note' => mb_substr("Parked for a future requirement: $why", 0, 255)]);
-                Audit::log('candidate_parked', 'candidate', $candidateId, ['role' => (int) $a['rid'], 'why' => $why]);
+                $db->update('applications', ['stage_id' => $notSuitable, 'stage_reason' => mb_substr($reason, 0, 255), 'stage_reason_at' => date('Y-m-d H:i:s'), 'fit_note' => mb_substr("Screened out: $why", 0, 255)], (int) $a['id']);
+                $db->insert('stage_history', ['application_id' => $a['id'], 'from_stage_id' => $first, 'to_stage_id' => $notSuitable, 'user_id' => null, 'note' => mb_substr("Screened out automatically: $why", 0, 255)]);
+                Audit::log('candidate_screened_out', 'candidate', $candidateId, ['role' => (int) $a['rid'], 'why' => $why]);
             } elseif (in_array($res, ['other_field', 'outside_band', 'experience_unknown'], true)) {
                 $db->run('UPDATE applications SET fit_note = ? WHERE id = ?', [mb_substr(ucfirst($why), 0, 255), $a['id']]);
             }

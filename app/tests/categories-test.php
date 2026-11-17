@@ -187,7 +187,7 @@ $check('…while the trial can still ask the old rules', (new FitAssessor($app))
 // The Chennai applicant, categorised again with routing on.
 (new FunctionRouting($app))->afterCategorised($c1);
 $a1 = $db->one('SELECT a.*, s.kind, s.name AS stage FROM applications a JOIN stages s ON s.id = a.stage_id WHERE candidate_id = ? AND role_id = ?', [$c1, $roleA]);
-$check("someone from Chennai who applied for the local-only post is parked [{$a1['stage']}: {$a1['stage_reason']}]", $a1['kind'] === 'hold' && str_contains((string) $a1['stage_reason'], 'Chennai'));
+$check("someone from Chennai who applied for the local-only post is Not suitable, with the reason (Benjamin, 17 Nov 2026; was: parked) [{$a1['stage']}: {$a1['stage_reason']}]", $a1['kind'] === 'fail' && str_contains((string) $a1['stage_reason'], 'Chennai'));
 $pool = $db->one("SELECT r.id, r.title, r.function_codes FROM applications a JOIN roles r ON r.id = a.role_id WHERE a.candidate_id = ? AND r.is_pool = 1", [$c1]);
 $check("…and filed under their field and city [{$pool['title']}]", $pool && $pool['title'] === 'Accounts, Tax & Audit · Chennai' && $pool['function_codes'] === 'ACC');
 $check('…not added to the senior post (2.5 yrs is outside 5–10)', !$db->col('SELECT id FROM applications WHERE candidate_id = ? AND role_id = ?', [$c1, $roleM]));

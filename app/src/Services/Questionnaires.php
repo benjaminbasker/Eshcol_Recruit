@@ -691,6 +691,23 @@ final class Questionnaires
             $imp->scoreApplication((int) $a['id']);
         }
         Audit::log('questionnaire_answered', 'candidate', (int) $q['candidate_id'], ['roles' => count($plans), 'keep' => $keep, 'contact_change' => (bool) $contact]);
+        // Their own city and qualifications are in now: the screening rules again (17 Nov 2026), so someone who turns
+        // out to live in another city, or not to be a B.Com, is moved to Not suitable without waiting for you.
+        if (Categoriser::mode($this->app) === 'on') {
+            $fr = new FunctionRouting($this->app);
+            $cand2 = $db->one('SELECT * FROM candidates WHERE id = ?', [$q['candidate_id']]);
+            $cat2 = (new Categoriser($this->app))->current((int) $q['candidate_id']);
+            $ns = Stages::id($this->app, Stages::NOT_SUITABLE);
+            foreach ($db->all("SELECT a.*, r.title AS role_title FROM applications a JOIN roles r ON r.id = a.role_id JOIN stages s ON s.id = a.stage_id
+                    WHERE a.candidate_id = ? AND r.is_pool = 0 AND s.kind = 'active'", [$q['candidate_id']]) as $ap) {
+                $role2 = $db->one('SELECT * FROM roles WHERE id = ?', [$ap['role_id']]);
+                if ($ns && $cand2 && $role2 && !Shortlists::isShortlisted($this->app, (int) $ap['stage_id']) && ($fail = $fr->screenFail($cand2, $cat2, $role2))) {
+                    $owner = (int) $db->col("SELECT id FROM users WHERE role = 'owner' ORDER BY id LIMIT 1");
+                    (new StageMover($this->app))->move($ap, (int) $ns, 'Screened out automatically: ' . $fail[1], $owner, false);
+                    $db->run('UPDATE applications SET fit_note = ? WHERE id = ?', [mb_substr('Screened out: ' . $fail[1], 0, 255), $ap['id']]);
+                }
+            }
+        }
         // The consent record (B2): "Keep my details on file" ticked or not.
         (new Consents($this->app))->record((int) $q['candidate_id'], $keep ? 'given' : 'withdrawn', 'details_form');
         return [];

@@ -243,6 +243,26 @@ final class RoleController extends Controller
     }
 
     /** "Found in your database": add the ticked ones (or all that fit), or "not this one". */
+    /**
+     * The screening rules on everyone already on a position (17 Nov 2026): GET lists who fails them (not a B.Com where
+     * B.Com is needed; another city on a local-only position), POST moves them to Not suitable with the reason.
+     * Owner only. Nobody at Shortlisted or later is touched, and no email goes out.
+     */
+    public function screen(int $id): never
+    {
+        Auth::requireOwner();
+        $role = $this->role($id);
+        $fr = new FunctionRouting($this->app);
+        if (Http::method() === 'POST') {
+            $moved = $fr->screenPosition($id, true, (int) Auth::user()['id']);
+            Http::flash('ok', $moved ? count($moved) . ' moved to Not suitable, each with the reason. Nobody was emailed.' : 'Nobody to move: everyone meets the rules.');
+            Http::redirect("/roles/$id#tab-pipeline");
+        }
+        $this->view('roles/screen', ['title' => 'Screening: ' . $role['title'], 'role' => $role, 'rows' => $fr->screenPosition($id, false, 0),
+            'bcom' => \Eshcol\Ats\Services\QualificationGate::requiresBcom(array_column($this->db->all("SELECT value FROM role_criteria WHERE role_id = ? AND kind = 'qualification'", [$id]), 'value')),
+            'scope' => FunctionRouting::scopeOf($role)]);
+    }
+
     public function found(int $id): never
     {
         $role = $this->role($id);
