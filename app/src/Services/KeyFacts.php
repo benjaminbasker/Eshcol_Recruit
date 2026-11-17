@@ -173,12 +173,17 @@ final class KeyFacts
      * request or wrote back. Yet to respond: asked or written to, no answer yet. Closed stages (fail, hold) are left
      * out and counted in 'closed'. $apps: the position's applications; $kf: forCandidates(); $fitRows: by application id. Pure.
      */
-    public static function replyLists(array $apps, array $kf, array $fitRows): array
+    public static function replyLists(array $apps, array $kf, array $fitRows, ?callable $isShortlisted = null): array
     {
         $out = ['responded' => [], 'waiting' => [], 'closed' => ['responded' => 0, 'waiting' => 0]];
         foreach ($apps as $a) {
             $k = $kf[(int) $a['candidate_id']] ?? [];
-            $did = ($k['responded'] ?? null) === 'answered' || !empty($k['msg_in']);
+            // Also responded (17 Nov 2026, Baliram): anyone at Shortlisted or later, and anyone whose salary and notice
+            // are filled in however they reached us (often typed in after a call).
+            $detailsIn = (($k['ctc_expected_lpa'] ?? null) !== null || ($k['ctc_min_lpa'] ?? null) !== null || ($k['ctc_current_lpa'] ?? null) !== null)
+                && ($k['notice_days'] ?? null) !== null;
+            $did = ($k['responded'] ?? null) === 'answered' || !empty($k['msg_in']) || $detailsIn
+                || ($isShortlisted !== null && $isShortlisted($a));
             $asked = !$did && (($k['responded'] ?? null) === 'asked' || !empty($k['msg_out']));
             if (!$did && !$asked) {
                 continue;

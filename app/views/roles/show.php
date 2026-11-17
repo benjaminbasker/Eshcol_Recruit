@@ -20,7 +20,7 @@ $kfOf = fn (array $a): array => $kfMap[(int) $a['candidate_id']] ?? [];
 // Closed stages (Not suitable, Withdrawn, No response, Future requirement) are left out and counted.
 $fitRowsAll = $fit['rows'];
 $rankScore = fn (array $a): ?int => \Eshcol\Ats\Services\KeyFacts::rankScore($a, $fit['rows']);
-['responded' => $responded, 'waiting' => $waitingList, 'closed' => $closedOut] = \Eshcol\Ats\Services\KeyFacts::replyLists($all, $kfMap, $fit['rows']);
+['responded' => $responded, 'waiting' => $waitingList, 'closed' => $closedOut] = \Eshcol\Ats\Services\KeyFacts::replyLists($all, $kfMap, $fit['rows'], $isShort);
 // The main tab: Responded opens first when nothing else was asked for and someone has responded.
 $shortN = $isPool ? 0 : count((new \Eshcol\Ats\Services\Shortlists(\Eshcol\Ats\App::get()))->shortlistedOn((int) $role['id']));
 $foundN = count($found['fits'] ?? []);
@@ -262,7 +262,7 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
         </nav>
       <?php endif; ?>
       <p class="small muted" style="margin:0 0 10px"><?= $who === 'responded'
-        ? "Everyone who has answered our details request or written back."
+        ? "Everyone who has answered our details request or written back, has their salary and notice filled in, or is shortlisted or further."
         : "Everyone we have asked or written to who hasn't answered yet." ?>
         Best first: those Claude has assessed for this position by Claude's score, then the rest by keyword score (marked "keyword").
         <?= $closedOut[$who] ? ' Not shown: ' . $closedOut[$who] . ' marked Not suitable, Withdrawn, No response or Future requirement (see their stage tabs).' : '' ?></p>

@@ -83,6 +83,24 @@ $check('yet to respond: asked or written to, no answer', array_column($L['waitin
 $check('closed stages left out and counted', $L['closed'] === ['responded' => 1, 'waiting' => 1]);
 $check('someone never asked is in neither', !in_array('Zz', array_column(array_merge($L['responded'], $L['waiting']), 'full_name'), true));
 
+// 17 Nov 2026 (Baliram): details typed in after a call, or shortlisted, also count as responded.
+$apps2 = [
+    ['id' => 21, 'candidate_id' => 31, 'full_name' => 'Baliram', 'stage_kind' => 'active', 'stage_id' => 9, 'eff_score' => 96],
+    ['id' => 22, 'candidate_id' => 32, 'full_name' => 'Ira', 'stage_kind' => 'active', 'stage_id' => 2, 'eff_score' => 80],
+    ['id' => 23, 'candidate_id' => 33, 'full_name' => 'Jaya', 'stage_kind' => 'active', 'stage_id' => 2, 'eff_score' => 70],
+    ['id' => 24, 'candidate_id' => 34, 'full_name' => 'Kavi', 'stage_kind' => 'active', 'stage_id' => 2, 'eff_score' => 60],
+];
+$kf2 = [
+    31 => ['responded' => null],                                                    // never asked, but sent to the client
+    32 => ['responded' => null, 'ctc_expected_lpa' => 5.5, 'notice_days' => 15],    // details typed in after a call
+    33 => ['responded' => null, 'ctc_expected_lpa' => 5.5, 'notice_days' => null], // half the details: not yet
+    34 => ['responded' => null],                                                    // nothing: in neither
+];
+$L2 = KF::replyLists($apps2, $kf2, [], fn ($a) => (int) $a['stage_id'] === 9);
+$check('shortlisted or later counts as responded (Baliram, never asked)', in_array('Baliram', array_column($L2['responded'], 'full_name'), true));
+$check('salary and notice filled in counts as responded (Ira)', in_array('Ira', array_column($L2['responded'], 'full_name'), true));
+$check('only part of the details, never asked: not counted (Jaya), and nobody asked is never "waiting"', !in_array('Jaya', array_column($L2['responded'], 'full_name'), true) && $L2['waiting'] === []);
+
 echo "\nOne table with tabs\n";
 $sv = (string) file_get_contents(dirname(__DIR__) . '/views/roles/show.php');
 $check('Top candidates is no longer a separate table', !str_contains($sv, 'class="card top-cands"'));
