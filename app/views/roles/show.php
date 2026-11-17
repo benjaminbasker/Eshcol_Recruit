@@ -77,7 +77,7 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
     $q = $qs[(int) $a['id']] ?? null;
     $nm = $a['full_name'] ?: 'Name not found';
     ob_start(); ?>
-    <tr<?= $isShort($a) ? ' class="short" title="Shortlisted"' : '' ?>>
+    <tr id="app-<?= (int) $a['id'] ?>"<?= $isShort($a) ? ' class="short" title="Shortlisted"' : '' ?>>
       <td style="width:64px"><?php if ($rank !== null): ?><span class="rank-n" title="Rank by Claude's assessment">#<?= $rank ?></span><br><?php endif; ?><span class="score <?= score_class($sc, (int) $role['score_threshold']) ?>"><?= $sc ?? '–' ?></span><?php if ($rank !== null && !\Eshcol\Ats\Services\KeyFacts::byClaude($a, $fitRowsAll)): ?><span class="kw-tag" title="Claude hasn't assessed them for this position: keyword score">keyword</span><?php endif; ?>
         <?php if ($a['override_score'] !== null): ?><br><span class="small muted" title="<?= e($a['override_reason']) ?>">set by you</span><?php endif; ?></td>
       <td>
@@ -292,7 +292,7 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
                 $nm = $a['full_name'] ?: 'Name not found';
                 $cd = $clientDecisions[(int) $a['id']] ?? null;
                 $isBelow = $a['stage_kind'] !== 'fail' && $a['eff_score'] !== null && (int) $a['eff_score'] < $threshold; ?>
-                <a class="kcard<?= $isBelow ? ' below' : '' ?><?= $isShort($a) ? ' short' : '' ?>" draggable="true" data-app="<?= (int) $a['id'] ?>" href="/candidates/<?= $a['candidate_id'] ?>?role=<?= $role['id'] ?>">
+                <a class="kcard<?= $isBelow ? ' below' : '' ?><?= $isShort($a) ? ' short' : '' ?>" id="app-<?= (int) $a['id'] ?>" draggable="true" data-app="<?= (int) $a['id'] ?>" href="/candidates/<?= $a['candidate_id'] ?>?role=<?= $role['id'] ?>">
                   <div class="top-line">
                     <span class="avatar sm" style="--h:<?= avatar_hue($nm) ?>"><?= e(initials($nm)) ?></span>
                     <span class="name"><?= e($nm) ?></span>

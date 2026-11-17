@@ -337,3 +337,18 @@ document.addEventListener('click', function (e) {
   b.parentNode.querySelectorAll('[data-todo-tab]').forEach(function (x) { x.classList.toggle('on', x === b); });
   document.querySelectorAll('[data-todo-group]').forEach(function (g) { g.hidden = name !== 'all' && g.getAttribute('data-todo-group') !== name; });
 });
+
+// "Back to the role" from a candidate (17 Nov 2026): go back to the same list you came from (Responded, a stage
+// filter, the board…) and land on their row. The server link is /roles/{id}#app-{application}; when the page you
+// came from was that role page, its address (with its filters) is used instead, keeping the row anchor.
+(function () {
+  var a = document.querySelector('.back-btn[data-back-role]');
+  if (!a || !document.referrer) { return; }
+  try {
+    var from = new URL(document.referrer);
+    if (from.origin === location.origin && from.pathname === '/roles/' + a.getAttribute('data-back-role')) {
+      var app = a.getAttribute('data-back-app');
+      a.setAttribute('href', from.pathname + from.search + (app ? '#app-' + app : (from.hash || '')));
+    }
+  } catch (e) { /* an odd referrer: keep the server link */ }
+})();

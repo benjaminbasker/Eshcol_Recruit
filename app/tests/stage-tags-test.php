@@ -108,6 +108,13 @@ $check('Shortlisted and Found in database are tabs, not stacked tables', str_con
     && str_contains($sv, "\$who === 'short'") && str_contains($sv, "\$who === 'found'"));
 $check('Responded / Yet to respond have their own stage filters', str_contains($sv, 'sub-tabs') && str_contains($sv, "\$_GET['st']"));
 
+echo "\nBack lands on their row\n";
+$check('every list row and board card carries id="app-{application}"', str_contains($sv, '<tr id="app-<?= (int) $a[\'id\'] ?>"') && str_contains($sv, 'id="app-<?= (int) $a[\'id\'] ?>" draggable="true"'));
+$cv = (string) file_get_contents(dirname(__DIR__) . '/views/candidates/show.php');
+$check('the Back button links to the row and names the role and application for the script', str_contains($cv, "'#app-' . \$backApp") && str_contains($cv, 'data-back-role=') && str_contains($cv, 'data-back-app='));
+$js = (string) file_get_contents(dirname(__DIR__) . '/public/assets/app.js');
+$check('the script reuses the list you came from (its filters) and keeps the row anchor', str_contains($js, '.back-btn[data-back-role]') && str_contains($js, 'document.referrer') && str_contains($js, "'#app-' + app"));
+
 // Clean up.
 $db->run('DELETE FROM applications WHERE candidate_id = ?', [$c]);
 $db->run('DELETE FROM candidates WHERE id = ?', [$c]);

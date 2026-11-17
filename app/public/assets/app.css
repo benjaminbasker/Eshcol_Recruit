@@ -908,3 +908,8 @@ a.db-kpi:hover { text-decoration: none; box-shadow: 0 0 0 2px #FFB85C; }
 .sub-tabs { margin: 0 0 10px; }
 .sub-tabs a { font-size: 12px; padding: 4px 11px; }
 .kw-tag { display: block; font-size: 10.5px; color: #8A8398; font-weight: 600; margin-top: 2px; }
+
+/* Back from a candidate lands on their row (17 Nov 2026): room for the sticky header, and a short glow so the eye finds it */
+table.list tr[id^="app-"], .kcard[id^="app-"] { scroll-margin-top: 96px; }
+table.list tr[id^="app-"]:target > td, .kcard[id^="app-"]:target { animation: row-glow 2.4s ease-out; }
+@keyframes row-glow { 0% { box-shadow: inset 0 0 0 999px rgba(255, 214, 102, .55); } 100% { box-shadow: inset 0 0 0 999px rgba(255, 214, 102, 0); } }
