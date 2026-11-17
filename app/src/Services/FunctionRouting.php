@@ -52,7 +52,9 @@ final class FunctionRouting
         $text = (string) $this->app->db->col('SELECT text FROM cv_files WHERE candidate_id = ? AND text IS NOT NULL ORDER BY id DESC LIMIT 1', [(int) $cand['id']]);
         return preg_match_all('/\p{L}/u', $text) < 200 ? ['no_cv_text', 'no readable CV yet'] : null;
     }
-    public const SCOPES = ['local' => 'Local candidates only', 'open' => 'Open to other cities', 'remote' => 'Remote: anywhere'];
+    public const SCOPES = ['local' => 'Local candidates only', 'radius' => 'Within a distance of the office', 'open' => 'Open to other cities', 'remote' => 'Remote: anywhere'];
+    /** The distance a "within N km" position uses when none is set. */
+    public const DEFAULT_RADIUS_KM = 100;
 
     private Categoriser $cat;
     private ?Skills $skills = null;
@@ -124,6 +126,16 @@ final class FunctionRouting
         $place = trim((string) $role['location']);
         if ($scope === 'local' && $where === 'no') {
             return ['other_city', "lives in $city; this position takes local candidates only"];
+        }
+        // "Within N km of the office" (17 Nov 2026): the job's city always; another town when it's within the distance.
+        if ($scope === 'radius' && $where !== 'yes') {
+            $radius = self::radiusOf($role);
+            $km = $this->kmToOffice($role, $cand);
+            if ($km !== null && $km > $radius) {
+                return ['other_city', "lives in $city, about $km km from the office; this position takes candidates within $radius km"];
+            }
+            $qualNote = implode('; ', array_filter([$km !== null ? "lives in $city, about $km km from the office" : ($where === 'unknown' ? 'city not known' : "lives in $city, distance not known"), $qualNote]));
+            return ['pipeline', $qualNote];
         }
         $note = match (true) {
             $scope === 'remote' => '',
@@ -202,6 +214,13 @@ final class FunctionRouting
                 return ['other_city', "Lives in $city; this position takes local candidates only"];
             }
         }
+        if (self::scopeOf($role) === 'radius') {
+            [$where, $city] = $this->whereFrom($role, $cand, $cat);
+            $radius = self::radiusOf($role);
+            if ($where === 'no' && ($km = $this->kmToOffice($role, $cand)) !== null && $km > $radius) {
+                return ['other_city', "Lives in $city, about $km km from the office; this position takes candidates within $radius km"];
+            }
+        }
         return null;
     }
 
@@ -240,6 +259,38 @@ final class FunctionRouting
             Audit::log('screening_applied', 'role', $roleId, ['moved' => count($out)]);
         }
         return $out;
+    }
+
+    /** The distance a "within N km" position takes (its own, else 100 km). Pure. */
+    public static function radiusOf(array $role): int
+    {
+        $km = (int) ($role['location_radius_km'] ?? 0);
+        return $km > 0 ? $km : self::DEFAULT_RADIUS_KM;
+    }
+
+    /**
+     * Straight-line km from where the candidate lives (their locality, else their town) to the client's office (its
+     * interview address or Maps link, else the job's city centre). Null when either place has no map point.
+     */
+    public function kmToOffice(array $role, array $cand): ?int
+    {
+        $skills = $this->skills();
+        $commute = new Commute($skills);
+        $cl = $this->app->db->one('SELECT c.interview_address, c.maps_url FROM roles r JOIN clients c ON c.id = r.client_id WHERE r.id = ?', [(int) ($role['id'] ?? 0)]);
+        $office = $cl ? $commute->localityIn($cl['interview_address'] ?? null, $cl['maps_url'] ?? null) : null;
+        $officePoint = $office ? ($office['point'] ?? Commute::pointOf((string) $office['locality'])) : null;
+        $officePoint ??= Commute::pointOf($skills->canonical(trim((string) ($role['location'] ?? '')), 'location'));
+        $loc = trim((string) ($cand['locality'] ?? ''));
+        $candPoint = $loc !== '' ? Commute::pointOf($skills->canonical($loc, 'locality')) : null;
+        $town = trim((string) ($cand['location'] ?? ''));
+        if (!$candPoint && $town !== '') {
+            foreach (array_reverse(array_map('trim', explode(',', $town))) as $part) {
+                if ($candPoint = Commute::pointOf($skills->canonical($part, 'location')) ?? Commute::pointOf($skills->canonical($part, 'locality'))) {
+                    break;
+                }
+            }
+        }
+        return $officePoint && $candPoint ? (int) round(Commute::km($candPoint, $officePoint)) : null;
     }
 
     /** The position's city and the other places listed on it, as the dictionary names them (lower case). */
@@ -293,7 +344,7 @@ final class FunctionRouting
         $notSuitable = (int) (Stages::id($this->app, Stages::NOT_SUITABLE) ?? 0);
 
         // 1. Positions they applied for themselves: someone from another city on a local-only position is parked.
-        $applied = $db->all("SELECT a.*, r.title, r.location, r.location_scope, r.exp_min, r.exp_max, r.exp_allow_below, r.exp_allow_above, r.work_mode, r.function_codes, r.id AS rid
+        $applied = $db->all("SELECT a.*, r.title, r.location, r.location_scope, r.location_radius_km, r.exp_min, r.exp_max, r.exp_allow_below, r.exp_allow_above, r.work_mode, r.function_codes, r.id AS rid
             FROM applications a JOIN roles r ON r.id = a.role_id
             WHERE a.candidate_id = ? AND r.is_pool = 0 AND r.status IN ('open','on_hold') AND (a.source IS NULL OR a.source NOT IN ('routed','database'))", [$candidateId]);
         if (!$applied && $appliedRoleId === null && $this->app->setting('auto_sort_unassigned', '1') !== '1') {
@@ -580,7 +631,7 @@ final class FunctionRouting
     {
         $db = $this->app->db;
         $out = [];
-        foreach ($db->all("SELECT id, title, location, location_scope, exp_min, exp_max, work_mode, function_codes FROM roles WHERE status = 'open' AND is_pool = 0 ORDER BY id") as $r) {
+        foreach ($db->all("SELECT id, title, location, location_scope, location_radius_km, exp_min, exp_max, work_mode, function_codes FROM roles WHERE status = 'open' AND is_pool = 0 ORDER BY id") as $r) {
             $rows = $db->all("SELECT t.*, c.full_name, c.location FROM routing_trial t JOIN candidates c ON c.id = t.candidate_id WHERE t.role_id = ? AND t.old_result <> 'closed'", [$r['id']]);
             $s = ['role' => $r, 'both' => 0, 'neither' => 0, 'join' => [], 'leave' => [], 'by_reason' => []];
             foreach ($rows as $t) {

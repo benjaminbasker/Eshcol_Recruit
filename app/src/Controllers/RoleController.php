@@ -454,6 +454,8 @@ final class RoleController extends Controller
         $data['function_codes'] = $fns ? implode(',', array_slice($fns, 0, 6)) : null;
         $data['location_scope'] = isset(FunctionRouting::SCOPES[$_POST['location_scope'] ?? '']) ? $_POST['location_scope']
             : FunctionRouting::defaultScope($data['exp_min'], $data['exp_max'], $data['work_mode']);
+        // "Within N km of the office" (17 Nov 2026): the distance, 5 to 2,000 km.
+        $data['location_radius_km'] = $data['location_scope'] === 'radius' ? max(5, min(2000, (int) ($_POST['location_radius_km'] ?? FunctionRouting::DEFAULT_RADIUS_KM))) : null;
         $criteria = [];
         foreach (self::KINDS as $kind => $field) {
             foreach (preg_split('/[\n,;]+/', (string) ($_POST[$field] ?? '')) as $v) {

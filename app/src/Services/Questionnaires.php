@@ -756,8 +756,9 @@ final class Questionnaires
         if ($city === '') {
             return [];
         }
-        $canon = (new Skills($this->app->db))->canonical($city, 'location');
-        return array_column($this->app->db->all("SELECT DISTINCT canonical FROM skills_dictionary WHERE category = 'locality' AND (area LIKE ? OR area LIKE ?) ORDER BY canonical", [$canon . '|%', $city . '|%']), 'canonical');
+        // "Chennai", "Madras", "Chennai, Tamil Nadu", "Pimprala, Jalgaon": the same matching as the Edit page (17 Nov 2026).
+        $map = locality_map();
+        return $map['cities'][locality_city($city, $map)] ?? [];
     }
 
     /** "chennai" -> "Chennai", "bangalore" -> "Bengaluru" (from the dictionary); unknown places tidied up. */

@@ -253,6 +253,47 @@ function signature_html(?array $u = null, string $regards = 'Regards,'): string
         . '</tr></table></td></tr></table>';
 }
 
+/**
+ * Every city's localities, for the locality drop-down that follows the City box (17 Nov 2026: Chennai showed none
+ * on the Edit page, which only ever listed the city saved when the page opened). 'cities': city => localities;
+ * 'alias': lower-case ways of writing a city that has localities ("madras", "bangalore") => that city.
+ * @return array{cities: array<string, list<string>>, alias: array<string, string>}
+ */
+function locality_map(): array
+{
+    $db = \Eshcol\Ats\App::get()->db;
+    $cities = [];
+    foreach ($db->all("SELECT DISTINCT SUBSTRING_INDEX(area, '|', 1) AS city, canonical FROM skills_dictionary WHERE category = 'locality' ORDER BY canonical") as $r) {
+        $cities[(string) $r['city']][] = (string) $r['canonical'];
+    }
+    $alias = [];
+    foreach (array_keys($cities) as $c) {
+        $alias[mb_strtolower($c)] = $c;
+    }
+    foreach ($db->all("SELECT term, canonical FROM skills_dictionary WHERE category = 'location'") as $r) {
+        if (isset($cities[$r['canonical']])) {
+            $alias[mb_strtolower((string) $r['term'])] = (string) $r['canonical'];
+        }
+    }
+    return ['cities' => $cities, 'alias' => $alias];
+}
+
+/**
+ * The city whose localities to offer, from what's in the City box: "Chennai", "chennai, tamil nadu", "Madras",
+ * "Pimprala, Jalgaon" (each comma part is tried, last first). '' when none has localities. Pure.
+ */
+function locality_city(string $box, array $map): string
+{
+    $parts = array_reverse(array_filter(array_map('trim', explode(',', mb_strtolower($box)))));
+    array_unshift($parts, mb_strtolower(trim($box)));
+    foreach ($parts as $p) {
+        if (isset($map['alias'][$p])) {
+            return $map['alias'][$p];
+        }
+    }
+    return '';
+}
+
 /** "Kavitha Raman" → "KR" (for avatar circles). */
 function initials(string $name): string
 {

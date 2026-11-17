@@ -6,7 +6,7 @@ foreach ($rows as $r) { $byRule[$r['rule']][] = $r; } ?>
   <div><p class="eyebrow"><?= e($role['code'] ?? '') ?></p><h1>Screening rules: <?= e($role['title']) ?></h1>
     <p class="muted">The rules on this position:
       <?= $bcom ? '<b>B.Com required</b> (M.Com, CA or CMA count as B.Com; MBA or PGDM with no graduation shown is flagged for you to confirm, not rejected)' : 'no qualification rule (set B.Com under Edit › Qualification to add one)' ?>;
-      <?= $scope === 'local' ? '<b>local candidates only</b> (' . e((string) $role['location']) . ')' : 'candidates from other cities are taken' ?>.
+      <?= $scope === 'local' ? '<b>local candidates only</b> (' . e((string) $role['location']) . ')' : ($scope === 'radius' ? '<b>within ' . \Eshcol\Ats\Services\FunctionRouting::radiusOf($role) . ' km of the office</b> (' . e((string) $role['location']) . ', plus towns within that distance)' : 'candidates from other cities are taken') ?>.
       New CVs are checked automatically. Below: people already on the position who don't meet them. Anyone Shortlisted or further is never touched, and nobody is emailed.</p></div>
 </div>
 <?php if (!$rows): ?>

@@ -14,7 +14,9 @@
     <div class="field"><label for="current_company">Current employer</label><input type="text" id="current_company" name="current_company" value="<?= e($c['current_company']) ?>"></div>
     <div class="field"><label for="location">City</label><input type="text" id="location" name="location" value="<?= e($c['location']) ?>"></div>
     <div class="field"><label for="locality">Locality <span class="hint">area they live in</span></label><input type="text" id="locality" name="locality" value="<?= e($c['locality'] ?? '') ?>" list="locality_list">
-      <datalist id="locality_list"><?php foreach (\Eshcol\Ats\App::get()->db->all("SELECT DISTINCT canonical FROM skills_dictionary WHERE category = 'locality' AND area LIKE ? ORDER BY canonical", [($c['location'] ?: 'Pune') . '|%']) as $lo): ?><option value="<?= e($lo['canonical']) ?>"><?php endforeach; ?></datalist></div>
+      <?php $locMap = locality_map(); $locCity = locality_city((string) ($c['location'] ?? ''), $locMap) ?: 'Pune'; // the list follows the City box (17 Nov 2026) ?>
+      <datalist id="locality_list"><?php foreach ($locMap['cities'][$locCity] ?? [] as $lo): ?><option value="<?= e($lo) ?>"><?php endforeach; ?></datalist>
+      <script type="application/json" id="locality-map"><?= json_encode($locMap, JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE) ?></script></div>
   </div>
   <div class="row">
     <div class="field"><label for="exp_years">Experience today <span class="hint">years</span></label><input type="number" step="0.1" min="0" id="exp_years" name="exp_years" value="<?= exp_now($c) !== null ? e(round(exp_now($c) / 12, 1)) : '' ?>">

@@ -62,7 +62,12 @@ final class Commute
             return null;
         }
         if ($city !== $office['city']) {
-            return ['level' => 'other_city', 'label' => "Lives in $city", 'tone' => 'bad'];
+            // Another town (17 Nov 2026, Satara for a Pune role): the straight-line km when both places have a map point
+            // (their locality, else their town: district headquarters have points since update 069).
+            $officePoint = $office['point'] ?? self::pointOf((string) $office['locality']);
+            $candPoint = ($cand ? self::pointOf($cand['locality']) : null) ?? self::pointOf($city);
+            $km = $officePoint && $candPoint ? (int) round(self::km($candPoint, $officePoint)) : null;
+            return ['level' => 'other_city', 'label' => "Lives in $city" . ($km !== null ? ' · ' . self::kmLabel($km) : ''), 'tone' => 'bad'] + ($km !== null ? ['km' => $km] : []);
         }
         if (!$cand) {
             return ['level' => 'same_city', 'label' => "Same city; locality not known", 'tone' => ''];

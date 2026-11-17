@@ -92,6 +92,29 @@ $check('the move is in the stage history with the reason', str_contains((string)
 $check('nobody was emailed', !(int) $db->col('SELECT COUNT(*) FROM email_queue WHERE candidate_id IN (SELECT candidate_id FROM applications WHERE role_id = ?) AND created_at >= NOW() - INTERVAL 1 MINUTE', [$role]));
 $check('running it again finds nobody', $fr->screenPosition($role, false, $uid) === []);
 
+echo "\nWithin a distance of the office (17 Nov 2026: freshers from Tamil Nadu towns for Chennai engineering roles)\n";
+$cl2 = $db->insert('clients', ['name' => "ZZ Screening Chennai $tag", 'interview_address' => 'Guindy Industrial Estate, Guindy, Chennai']);
+$eng = $db->insert('roles', ['client_id' => $cl2, 'title' => "Zz Graduate Engineer $tag", 'location' => 'Chennai', 'location_scope' => 'radius', 'location_radius_km' => 300, 'status' => 'open', 'score_threshold' => 0]);
+$engRow = $db->one('SELECT * FROM roles WHERE id = ?', [$eng]);
+$catE = ['function_code' => 'EPC', 'secondary_code' => null, 'preferred_cities' => ''];
+$at = fn (string $city, string $loc = '') => ['id' => 0, 'qualifications' => 'B.E. Mechanical', 'location' => $city, 'locality' => $loc, 'exp_months' => 0, 'exp_as_of' => date('Y-m-d')];
+$kmV = $fr->kmToOffice($engRow, $at('Vellore'));
+$check("Vellore is about 130 km from a Guindy office ($kmV km)", $kmV !== null && $kmV >= 110 && $kmV <= 150);
+[$rV, $nV] = $fr->decide($at('Vellore'), $catE, $engRow);
+$check('within 300 km: on the pipeline, the distance noted', $rV === 'pipeline' && str_contains($nV, 'about') && str_contains($nV, 'km from the office'));
+[$rT] = $fr->decide($at('Trichy'), $catE, $engRow);
+$check('Tiruchirappalli (about 300 km, "Trichy") is judged by its distance too', in_array($rT, ['pipeline', 'other_city'], true) && $fr->kmToOffice($engRow, $at('Trichy')) > 250);
+[$rM, $wM] = $fr->decide($at('Madurai'), $catE, $engRow);
+$check('Madurai (about 420 km): further than 300, with the reason', $rM === 'other_city' && str_contains($wM, 'within 300 km'));
+[$rC] = $fr->decide($at('Chennai', 'Tambaram'), $catE, $engRow);
+$check('the job\'s own city is always in, whatever the distance setting', $rC === 'pipeline');
+[$rU, $nU] = $fr->decide($at('Some Village'), $catE, $engRow);
+$check('a place with no map point is never kept out: on the pipeline, "distance not known"', $rU === 'pipeline' && str_contains($nU, 'distance not known'));
+$check('the clean-up page uses the same rule', ($fr->screenFail($at('Madurai'), $catE, $engRow)[0] ?? '') === 'other_city' && $fr->screenFail($at('Vellore'), $catE, $engRow) === null);
+$check('no distance set: 100 km', FunctionRouting::radiusOf(['location_radius_km' => null]) === 100 && FunctionRouting::radiusOf(['location_radius_km' => 250]) === 250);
+$db->run('DELETE FROM roles WHERE client_id = ?', [$cl2]);
+$db->run('DELETE FROM clients WHERE id = ?', [$cl2]);
+
 echo "\nNew CVs: the routing decision\n";
 $roleRow = $db->one('SELECT * FROM roles WHERE id = ?', [$role]);
 $cat = ['function_code' => 'ACC', 'secondary_code' => null, 'preferred_cities' => ''];

@@ -368,3 +368,31 @@ document.addEventListener('click', function (e) {
   if (id && document.getElementById(id)) { return; } // the row is still here: the tab script scrolls to it
   window.scrollTo(0, r.y || 0);
 })();
+
+// The locality drop-down follows the City box (17 Nov 2026): type or change the city (Chennai, "Madras",
+// "Chennai, Tamil Nadu") and the list offers that city's localities. Data: <script id="locality-map"> on the page.
+(function () {
+  var el = document.getElementById('locality-map');
+  var city = document.getElementById('location');
+  var list = document.getElementById('locality_list');
+  if (!el || !city || !list) { return; }
+  var map;
+  try { map = JSON.parse(el.textContent); } catch (e) { return; }
+  function cityOf(box) {
+    var v = (box || '').toLowerCase().trim();
+    var parts = [v].concat(v.split(',').map(function (p) { return p.trim(); }).filter(Boolean).reverse());
+    for (var i = 0; i < parts.length; i++) { if (map.alias[parts[i]]) { return map.alias[parts[i]]; } }
+    return '';
+  }
+  var shown = null;
+  function refill() {
+    var c = cityOf(city.value);
+    if (!c || c === shown) { return; }
+    shown = c;
+    list.innerHTML = '';
+    (map.cities[c] || []).forEach(function (name) { var o = document.createElement('option'); o.value = name; list.appendChild(o); });
+  }
+  city.addEventListener('input', refill);
+  city.addEventListener('change', refill);
+  refill();
+})();

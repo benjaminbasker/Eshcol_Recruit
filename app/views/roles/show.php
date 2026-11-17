@@ -134,7 +134,7 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
     <?php if (!$isPool && ($catMode ?? 'off') !== 'off'): ?>
     <div class="facts-inline" style="margin-top:4px">
       <span title="Fields of work this position takes"><?= icon('briefcase', 'sm') ?><?= $roleFields ? e(implode(', ', array_map(fn ($c) => \Eshcol\Ats\Services\Categoriser::functionName(\Eshcol\Ats\App::get(), $c), $roleFields))) : 'Field not set' ?><?= $roleFields && !$fieldsSet && !$contractor ? ' <span class="muted">(guessed from the title: <a href="/roles/' . (int) $role['id'] . '/edit#who-fieldset">set it</a>)</span>' : '' ?></span>
-      <span><?= icon('pin', 'sm') ?><?= e(\Eshcol\Ats\Services\FunctionRouting::SCOPES[\Eshcol\Ats\Services\FunctionRouting::scopeOf($role)]) ?></span>
+      <span><?= icon('pin', 'sm') ?><?= e(\Eshcol\Ats\Services\FunctionRouting::scopeOf($role) === 'radius' ? 'Within ' . \Eshcol\Ats\Services\FunctionRouting::radiusOf($role) . ' km of the office' : \Eshcol\Ats\Services\FunctionRouting::SCOPES[\Eshcol\Ats\Services\FunctionRouting::scopeOf($role)]) ?></span>
     </div>
     <?php endif; ?>
     </div>

@@ -71,9 +71,11 @@ $wLabels = ['must' => 'Must-haves', 'experience' => 'Experience', 'qualification
         <fieldset class="field" id="who-fieldset">
           <legend>Who can we consider? <span class="hint">where the candidates live</span></legend>
           <?php foreach (\Eshcol\Ats\Services\FunctionRouting::SCOPES as $sk => $sl): ?>
-            <label style="display:block;font-weight:normal;margin:2px 0"><input type="radio" name="location_scope" value="<?= $sk ?>"<?= $scope === $sk ? ' checked' : '' ?><?= $scopeSet ? ' data-touched="1"' : '' ?>> <?= e($sk === 'local' ? 'Local candidates only (the job\'s city, its localities and the other acceptable locations below)' : ($sk === 'open' ? 'Open to candidates from other cities' : 'Remote: anywhere')) ?></label>
+            <label style="display:block;font-weight:normal;margin:2px 0"><input type="radio" name="location_scope" value="<?= $sk ?>"<?= $scope === $sk ? ' checked' : '' ?><?= $scopeSet ? ' data-touched="1"' : '' ?>> <?= $sk === 'radius'
+                ? 'Within <input type="number" name="location_radius_km" min="5" max="2000" step="5" value="' . (int) ($r['location_radius_km'] ?? \Eshcol\Ats\Services\FunctionRouting::DEFAULT_RADIUS_KM) . '" style="width:84px;display:inline-block" aria-label="Distance in km"> km of the office (the job\'s city, plus towns within that distance: e.g. freshers who will move for the job)'
+                : e($sk === 'local' ? 'Local candidates only (the job\'s city, its localities and the other acceptable locations below)' : ($sk === 'open' ? 'Open to candidates from other cities' : 'Remote: anywhere')) ?></label>
           <?php endforeach; ?>
-          <p class="hint" id="scope-hint">Suggested from the experience band: junior posts take local candidates only (a move rarely pays for itself), senior posts are open to other cities. Change it if the client will relocate someone. Someone from another city on a local-only post is kept for a future requirement, not added to its pipeline.</p>
+          <p class="hint" id="scope-hint">Suggested from the experience band: junior posts take local candidates only (a move rarely pays for itself), senior posts are open to other cities. Change it if the client will relocate someone. Someone from another city on a local-only post, or further than the distance you set, is marked Not suitable with the reason. Distances are straight-line, from the client's office (its address or Maps link), to the candidate's locality or town.</p>
         </fieldset>
         <fieldset class="field">
           <legend>Field of work <span class="hint">CVs in these fields are considered; tick a second one when the job straddles two</span></legend>

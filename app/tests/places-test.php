@@ -118,7 +118,7 @@ $kmOffice = $cm->localityIn('Office 301, Archway, Sopan Baug, Balewadi High Stre
 $gk = $cm->between('Gokhalenagar', 'Pune', $kmOffice);
 $check('Gokhalenagar to the Balewadi office: Moderate, with about 5 to 9 km (after update 056)', ($gk['level'] ?? '') === 'moderate' && isset($gk['km']) && $gk['km'] >= 5 && $gk['km'] <= 9
     && str_contains($gk['label'], 'Moderate: Central to West Pune · about '));
-$check('a different city has no km', !isset($cm->between(null, 'Mumbai', $kmOffice)['km']));
+$check('a different city: "Lives in Mumbai", with the straight-line km from its centre (17 Nov 2026)', ($cm->between(null, 'Mumbai', $kmOffice)['km'] ?? 0) > 100 && str_starts_with($cm->between(null, 'Mumbai', $kmOffice)['label'], 'Lives in Mumbai'));
 
 echo "\nCV report and Re-read all CVs\n";
 $role = $db->insert('roles', ['client_id' => $clientId, 'title' => "Accounting Associate $tag", 'location' => 'Pune', 'status' => 'open', 'exp_min' => 2, 'exp_max' => 3, 'code' => 'ZZP-' . random_int(1000, 9999)]);
@@ -140,4 +140,41 @@ $c = $db->one('SELECT * FROM candidates WHERE id = ?', [$cid]);
 $check('Re-read fills the missing locality and city', $c['locality'] === 'Hadapsar' && $c['location'] === 'Pune' && ($res['filled']['locality'] ?? 0) >= 1);
 $check('…and never changes what you confirmed', $c['current_title'] === 'Accounts Officer');
 $check('…and re-scores their roles', (bool) $db->col('SELECT scored_at FROM applications WHERE candidate_id = ? AND role_id = ? AND scored_at >= NOW() - INTERVAL 1 MINUTE', [$cid, $role]));
+
+echo "\nThe locality list follows the city (17 Nov 2026: no list for Chennai)\n";
+$lm = locality_map();
+$check('Chennai has its localities, well over a hundred (update 068)', count($lm['cities']['Chennai'] ?? []) >= 150 && in_array('Velachery', $lm['cities']['Chennai'], true) && in_array('Tambaram', $lm['cities']['Chennai'], true));
+$check('the city is found however it is written: "Chennai", "chennai, tamil nadu", "Madras"', locality_city('Chennai', $lm) === 'Chennai'
+    && locality_city('chennai, tamil nadu', $lm) === 'Chennai' && locality_city('Madras', $lm) === 'Chennai');
+$check('...and other cities: "Bangalore" is Bengaluru; a town with no list gives none (no wrong list)', locality_city('Bangalore', $lm) === 'Bengaluru' && locality_city('Pimprala, Jalgaon', $lm) === '');
+$check('Chennai localities have their zones and common spellings ("R A Puram", "Chrompet")', (new \Eshcol\Ats\Services\Skills($db))->localityOf('r a puram')['zone'] === 'Central'
+    && (new \Eshcol\Ats\Services\Skills($db))->canonical('chrompet', 'locality') === 'Chromepet');
+echo "\nOther towns and cities (17 Nov 2026: Satara for a Pune role)\n";
+$skD = new \Eshcol\Ats\Services\Skills($db);
+$cmD = new \Eshcol\Ats\Services\Commute($skD);
+$offD = $cmD->localityIn('Office 301, Archway, Sopan Baug, Balewadi High Street, Pune', null);
+$sat = $cmD->between(null, 'Satara', $offD);
+$check('Satara: another town, with the distance to the Balewadi office (about 100 km)', ($sat['level'] ?? '') === 'other_city' && ($sat['km'] ?? 0) >= 90 && ($sat['km'] ?? 0) <= 115
+    && str_starts_with($sat['label'], 'Lives in Satara · about'));
+$check('...and the client sees it: "About N km from your Balewadi office"', str_ends_with((string) \Eshcol\Ats\Services\Shortlists::distanceLine($sat, 'Balewadi'), 'km from your Balewadi office'));
+$check('Karnataka too: Belgaum, Hubli, Gulbarga, Shimoga, Coorg are known towns with points', $skD->canonical('belgaum', 'location') === 'Belagavi' && $skD->canonical('gulbarga', 'location') === 'Kalaburagi'
+    && \Eshcol\Ats\Services\Commute::pointOf($skD->canonical('hubli', 'location')) !== null && \Eshcol\Ats\Services\Commute::pointOf($skD->canonical('coorg', 'location')) !== null
+    && \Eshcol\Ats\Services\Commute::pointOf($skD->canonical('shimoga', 'location')) !== null);
+$check('district names find their headquarters: Ahmednagar, Osmanabad, Nilgiris, Kanyakumari, Trichy', $skD->canonical('ahmednagar', 'location') === 'Ahilyanagar'
+    && $skD->canonical('osmanabad', 'location') === 'Dharashiv' && $skD->canonical('nilgiris', 'location') === 'Ooty'
+    && $skD->canonical('kanyakumari', 'location') === 'Nagercoil' && $skD->canonical('trichy', 'location') === 'Tiruchirappalli');
+$check('every district headquarters of Maharashtra and Tamil Nadu has a map point (e.g. Sindhudurg / Oros, Tenkasi, Ranipet)', \Eshcol\Ats\Services\Commute::pointOf($skD->canonical('oros', 'location')) !== null
+    && \Eshcol\Ats\Services\Commute::pointOf('Tenkasi') !== null && \Eshcol\Ats\Services\Commute::pointOf('Ranipet') !== null && \Eshcol\Ats\Services\Commute::pointOf('Yavatmal') !== null);
+$che = $cmD->between(null, 'Chennai', $offD);
+$check('a big city given without a locality still gets a distance (its centre point)', ($che['km'] ?? 0) > 800);
+$check('the major cities have full lists: Bengaluru, Delhi, Hyderabad, Kolkata over 100; Mumbai, Ahmedabad well over 60', count($lm['cities']['Bengaluru'] ?? []) >= 0
+    && count(locality_map()['cities']['Bengaluru']) >= 140 && count(locality_map()['cities']['Delhi']) >= 100 && count(locality_map()['cities']['Hyderabad']) >= 100
+    && count(locality_map()['cities']['Kolkata']) >= 100 && count(locality_map()['cities']['Mumbai']) >= 90 && count(locality_map()['cities']['Ahmedabad']) >= 60);
+$check('cities that had none now have lists (Coimbatore, Kochi, Nagpur, Jaipur, Madurai...)', count(locality_map()['cities']['Coimbatore'] ?? []) >= 30 && count(locality_map()['cities']['Madurai'] ?? []) >= 20
+    && count(locality_map()['cities']['Jaipur'] ?? []) >= 30);
+$check('a name two cities share is kept for both: "Civil Lines (Nagpur)" beside Delhi\'s "Civil Lines"', in_array('Civil Lines (Nagpur)', locality_map()['cities']['Nagpur'] ?? [], true)
+    && in_array('Civil Lines', locality_map()['cities']['Delhi'] ?? [], true));
+$editSrc = (string) file_get_contents(dirname(__DIR__) . '/views/candidates/edit.php');
+$check('the Edit page carries every city\'s list, and the script refills it when the City box changes', str_contains($editSrc, 'locality_map()') && str_contains($editSrc, 'id="locality-map"')
+    && str_contains((string) file_get_contents(dirname(__DIR__) . '/public/assets/app.js'), "getElementById('locality-map')"));
 exit(0);
