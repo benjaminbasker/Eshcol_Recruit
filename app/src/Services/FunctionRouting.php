@@ -255,12 +255,12 @@ final class FunctionRouting
         // 3. No open position takes them (a different field, another city, outside the range): filed in the pool
         //    for their field and city, so they are found when one does.
         if (!$added && !$settled && $this->app->setting('talent_pools_enabled', '1') === '1') {
-            $city = trim((string) $cand['location']);
-            $poolId = $this->pool((string) $cat['function_code'], $city);
+            [$code, $city, $note] = $this->poolFor($cand, $cat);
+            $poolId = $this->pool($code, $city);
             if (!$db->col('SELECT id FROM applications WHERE candidate_id = ? AND role_id = ?', [$candidateId, $poolId])) {
                 $importer->attach($candidateId, $poolId, $userId, 'routed');
-                $db->run('UPDATE applications SET fit_note = ? WHERE candidate_id = ? AND role_id = ?', ['Filed by field and city', $candidateId, $poolId]);
-                $added[] = ['role_id' => $poolId, 'title' => $this->poolTitle((string) $cat['function_code'], $city), 'pool' => true];
+                $db->run('UPDATE applications SET fit_note = ? WHERE candidate_id = ? AND role_id = ?', [mb_substr($note, 0, 255), $candidateId, $poolId]);
+                $added[] = ['role_id' => $poolId, 'title' => $this->poolTitle($code, $city), 'pool' => true];
             }
         }
         if ($added) {
@@ -328,6 +328,26 @@ final class FunctionRouting
         if (FitAssessor::enabled($this->app)) {
             $fit->queueForCandidate($candidateId);
         }
+    }
+
+    /**
+     * Which pool a candidate nobody takes is filed in (17 Nov 2026, Benjamin): the job they applied for decides
+     * when the email named one that isn't a position here ("Document Controller, EPC Projects (Chennai)" → the
+     * document-control pool for Chennai); otherwise their own field, as Claude read it from their latest job, and
+     * the city they live in. Returns [field code, city, the note on the application].
+     * @return array{0: string, 1: string, 2: string}
+     */
+    public function poolFor(array $cand, array $cat): array
+    {
+        $applied = trim((string) ($cand['applied_for'] ?? ''));
+        if ($applied !== '') {
+            $code = $this->cat->guessFromTitle(trim((string) preg_replace('/\([^)]*\)\s*$/u', '', $applied)));
+            if ($code !== null) {
+                $city = MailIntake::cityInTitle($applied) ?: trim((string) $cand['location']);
+                return [$code, $city, 'Filed by the job applied for: ' . $applied];
+            }
+        }
+        return [(string) $cat['function_code'], trim((string) $cand['location']), 'Filed by field and city'];
     }
 
     public function poolTitle(string $code, string $city): string

@@ -161,6 +161,11 @@ final class MailIntake
                         $cands[] = $cid;
                         $this->fillEmail($cid, $replyTo !== '' && $this->isCandidateAddress($replyTo, $cfg['mailbox']) ? $replyTo : $from, $cfg['mailbox']);
                         $this->fillName($cid, $this->nameFromEmail($subject, $replyTo, $replyName, $from, $fromName, $cfg['mailbox']));
+                        if ($roleId === null) {
+                            // The job they asked for isn't a position in the app (17 Nov 2026): keep its name, so they
+                            // are filed in that job's talent pool and the thank-you names it.
+                            $this->fillAppliedFor($cid, self::appliedFromSubject($subject));
+                        }
                         if ($sendAck && $r['outcome'] !== 'duplicate_file') {
                             $a = $ack->acknowledge($cid, $roleId, $userId);
                             $notes[] = $a['message'];
@@ -310,6 +315,49 @@ final class MailIntake
             }
         }
         return null;
+    }
+
+    /**
+     * The job the email says they applied for (17 Nov 2026): the website form's subject
+     * "Job application — Document Controller, EPC Projects (Chennai) — Palani K", or "Application for
+     * Document Controller". Null when the subject names none. Pure: tested directly.
+     */
+    public static function appliedFromSubject(string $subject): ?string
+    {
+        $s = trim(preg_replace('/\s+/u', ' ', $subject));
+        if (preg_match('/^\s*(?:re|fwd?)\s*:\s*/i', $s)) {
+            $s = preg_replace('/^\s*(?:re|fwd?)\s*:\s*/i', '', $s);
+        }
+        $job = null;
+        if (preg_match('/^Job application\s*[—–-]\s*(.+?)\s*[—–-]\s*[^—–-]{3,60}$/u', $s, $m)) {
+            $job = $m[1];
+        } elseif (preg_match('/^Job application\s*[—–-]\s*(.+)$/u', $s, $m)) {
+            $job = $m[1];
+        } elseif (preg_match('/\bappl(?:ication|ying|y)\s+for\s+(?:the\s+)?(?:post|position|role|job|vacancy)?\s*(?:of\s+)?(?:an?\s+)?([^—–:,|]{3,100})/iu', $s, $m)) {
+            $job = $m[1]; // "Application for the post of Piping Designer"; a plain "CV for any opening" names no job
+        }
+        if ($job === null) {
+            return null;
+        }
+        $job = trim((string) preg_replace('/\s+(?:post|position|role|job|vacancy|opening)\s*$/iu', '', trim($job)), " \t.-–—\"'");
+        if (preg_match('/^(?:any|some|suitable|a|an)\b/iu', $job)) {
+            return null;
+        }
+        return mb_strlen($job) >= 3 && mb_strlen($job) <= 160 && !preg_match('/^(?:your|the)\s+(?:company|organi[sz]ation|firm)$/i', $job) ? $job : null;
+    }
+
+    /** The city in a job title's brackets, "Document Controller, EPC Projects (Chennai)" → "Chennai"; '' when none. Pure. */
+    public static function cityInTitle(string $title): string
+    {
+        return preg_match('/\(([\p{L} .\-]{3,40})\)\s*$/u', trim($title), $m) ? trim($m[1]) : '';
+    }
+
+    /** Remembers the job applied for when no position matched; the first one we knew is kept. */
+    private function fillAppliedFor(int $candidateId, ?string $job): void
+    {
+        if ($job !== null) {
+            $this->app->db->run('UPDATE candidates SET applied_for = ? WHERE id = ? AND applied_for IS NULL', [mb_substr($job, 0, 160), $candidateId]);
+        }
     }
 
     /** Only when the CV gave no usable name. */

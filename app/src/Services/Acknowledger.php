@@ -215,20 +215,25 @@ final class Acknowledger
             $link = (new Questionnaires($this->app))->link($lead);
         }
         $st = Questionnaires::subjectTitle($roles);
+        // The job they asked for on the website, when it isn't a position here (17 Nov 2026): named, not "your CV".
+        $applied = !$roles ? trim((string) ($c['applied_for'] ?? '')) : '';
+        if ($applied !== '') {
+            $st = $applied;
+        }
         if ($link) {
             $subject = $st ? "Next step for your $st application" : ($roles ? 'Next step for your application' : "We've received your CV: one step left");
         } else {
             $subject = $st ? "We've received your application for $st" : ($roles ? "We've received your application for our roles" : "We've received your CV");
         }
-        $phraseH = Questionnaires::rolePhrase($roles, true);
-        $phraseT = Questionnaires::rolePhrase($roles, false);
+        $phraseH = $applied !== '' ? 'the <b style="color:inherit;">' . CandidateEmail::h($applied) . '</b> position' : Questionnaires::rolePhrase($roles, true);
+        $phraseT = $applied !== '' ? "the $applied position" : Questionnaires::rolePhrase($roles, false);
         $type = Engagement::forRoles($roles); // wording by type of position (15 Nov 2026)
         $critical = 'These details are critical for evaluating your application, and we can only put forward profiles that are complete.';
         $privacy = CandidateEmail::LINKS['privacy'];
         $p = [
             'title' => $subject,
             'preheader' => $link ? 'Thank you for applying. One step left: about two minutes.' : 'Thank you for applying. Here is what happens next.',
-            'eyebrow' => $roles ? 'Application received' : 'CV received',
+            'eyebrow' => $roles || $applied !== '' ? 'Application received' : 'CV received',
             'headline' => $first !== '' ? "Thank you, $first." : 'Thank you.',
             'sub_html' => 'Your application for ' . $phraseH . ' has reached us safely' . ($link ? ', and we have read your CV.' : '.'),
             'sub_text' => "Your application for $phraseT has reached us safely" . ($link ? ', and we have read your CV.' : '.'),

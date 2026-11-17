@@ -47,9 +47,11 @@ final class CvReport
             usort($history, fn ($a, $b) => $b['start'] <=> $a['start']);
         }
         $roles = $this->rankRoles($c, $text, $skills, $candidateId);
+        $fieldNote = $this->fieldNote($c, $roles);
         $flags = $this->flags($c, $text, $history, $roles[0] ?? null);
         return [
-            'summary' => $this->summary($c, $found, $quals, $history, $roles, $flags),
+            'summary' => $this->summary($c, $found, $quals, $history, $roles, $flags, $fieldNote),
+            'field_note' => $fieldNote,
             'skills' => $found,
             'history' => $history,
             'roles' => $roles,
@@ -75,6 +77,7 @@ final class CvReport
         // A contractor sees only their own positions here too (found by the page smoke test, 15 Nov 2026).
         $mine = \Eshcol\Ats\Access::roleFilter(\Eshcol\Ats\Auth::user(), 'r.id');
         $roles = $db->all("SELECT r.*, cl.name AS client, cl.interview_address, cl.maps_url FROM roles r JOIN clients cl ON cl.id = r.client_id WHERE r.status = 'open' AND r.is_pool = 0 AND $mine ORDER BY r.id");
+        $roles = $this->inTheirField($c, $roles, $on);
         // Every open role's requirements in one request (audit P1, 16 Nov 2026), not one per role.
         $critBy = [];
         if ($roles) {
@@ -104,6 +107,57 @@ final class CvReport
         // Roles Claude has assessed first (its score), then the rest by keyword match: the two scales differ.
         usort($out, fn ($a, $b) => [(bool) $b['claude'], $b['rank'], $b['score']] <=> [(bool) $a['claude'], $a['rank'], $a['score']]);
         return $out;
+    }
+
+    /**
+     * With categories on (17 Nov 2026, Palani K): only positions in the candidate's field (primary or secondary)
+     * are compared, plus any they are already on. A document controller is no longer scored against accounts
+     * positions. A position whose field isn't known is kept. Nothing changes while categories are off or trial.
+     */
+    public function inTheirField(array $c, array $roles, array $on = []): array
+    {
+        $fields = $this->candidateFields($c);
+        if ($fields === null) {
+            return $roles;
+        }
+        $cat = new Categoriser($this->app);
+        return array_values(array_filter($roles, function (array $r) use ($fields, $on, $cat): bool {
+            if (in_array((int) $r['id'], $on, true)) {
+                return true;
+            }
+            $rf = $cat->roleFunctions($r);
+            return !$rf || array_intersect($rf, $fields) !== [];
+        }));
+    }
+
+    /** The candidate's field codes (primary and secondary), or null when categories aren't on or they aren't categorised. */
+    private function candidateFields(array $c): ?array
+    {
+        if (Categoriser::mode($this->app) !== 'on') {
+            return null;
+        }
+        $cat = (new Categoriser($this->app))->current((int) $c['id']);
+        if (!$cat) {
+            return null;
+        }
+        return array_values(array_filter([(string) $cat['function_code'], (string) ($cat['secondary_code'] ?? '')]));
+    }
+
+    /** "No open position in their field (IT, Software & Data / Engineering Projects…). Filed in the … pool." Null when roles were found. */
+    private function fieldNote(array $c, array $roles): ?string
+    {
+        if ($roles) {
+            return null;
+        }
+        $fields = $this->candidateFields($c);
+        if ($fields === null) {
+            return null;
+        }
+        $names = array_map(fn ($f) => Categoriser::functionName($this->app, $f), $fields);
+        $pool = $this->app->db->col("SELECT r.title FROM applications a JOIN roles r ON r.id = a.role_id WHERE a.candidate_id = ? AND r.is_pool = 1 ORDER BY a.id DESC LIMIT 1", [(int) $c['id']]);
+        $applied = trim((string) ($c['applied_for'] ?? ''));
+        return 'No open position in their field (' . implode(' / ', $names) . ')' . ($applied !== '' ? '; they applied for ' . $applied : '') . '.'
+            . ($pool ? " Filed in the $pool talent pool, for when a position opens." : '');
     }
 
     /**
@@ -269,7 +323,7 @@ final class CvReport
         return count($marks);
     }
 
-    private function summary(array $c, array $skills, string $quals, array $history, array $roles, array $flags): string
+    private function summary(array $c, array $skills, string $quals, array $history, array $roles, array $flags, ?string $fieldNote = null): string
     {
         $name = $c['full_name'] ?: 'This candidate';
         $months = exp_now($c);
@@ -309,7 +363,7 @@ final class CvReport
                 $p[] = 'Next: ' . $roles[1]['title'] . ' (' . $roles[1]['code'] . '): ' . $at($roles[1]) . ', ' . $roles[1]['experience'] . '.';
             }
         } else {
-            $p[] = 'There are no open roles to compare against yet.';
+            $p[] = $fieldNote ?? 'There are no open roles to compare against yet.';
         }
         $points = array_values(array_filter($flags, fn ($f) => in_array($f['kind'], ['gap', 'short', 'student', 'dates', 'old_cv'], true)));
         if ($points) {

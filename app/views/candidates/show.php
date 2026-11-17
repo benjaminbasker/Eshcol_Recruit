@@ -79,7 +79,7 @@ $backTitle = $backRole ? (string) \Eshcol\Ats\App::get()->db->col('SELECT title 
         <span><?= icon('clock', 'sm') ?>Notice <?= $c['notice_days'] === null ? '?' : ((int) $c['notice_days'] === 0 ? 'immediate' : (int) $c['notice_days'] . ' days') ?></span>
         <span>₹ <?= e(lpa($c['ctc_current_lpa'])) ?> → <?= e(lpa($c['ctc_expected_lpa'])) ?><?= $c['ctc_min_lpa'] !== null ? ' <span class="muted">(min ' . e(lpa($c['ctc_min_lpa'])) . ')</span>' : '' ?></span>
       </div>
-      <p class="meta-pills"><span>On file since <?= e(nice_date($c['created_at'])) ?></span><span>Source: <?= e($c['source']) ?></span><span>Last contact <?= e(nice_date($c['last_activity_at'] ?? $c['created_at'])) ?></span><span>Kept until <?= e(nice_date($c['purge_after'])) ?><?= $c['retention_note'] ? ' (' . e($c['retention_note']) . ')' : '' ?></span></p>
+      <p class="meta-pills"><span>On file since <?= e(nice_date($c['created_at'])) ?></span><span>Source: <?= e(!empty($c['channel']) ? channel_name($c['channel']) : $c['source']) ?></span><span>Last contact <?= e(nice_date($c['last_activity_at'] ?? $c['created_at'])) ?></span><span>Kept until <?= e(nice_date($c['purge_after'])) ?><?= $c['retention_note'] ? ' (' . e($c['retention_note']) . ')' : '' ?></span></p>
     </div>
     <div class="actions">
       <?php if ($c['phone']): ?><a class="btn ghost" href="<?= e(tel_link($c['phone'])) ?>" title="Call <?= e($c['phone']) ?> from this computer"><?= icon('phone') ?><span class="hide-sm">Call</span></a><?php endif; ?>
@@ -205,6 +205,10 @@ if ($hasMsgs):
     <?php if (!$report['readable']): ?><p class="small muted">The CV text could not be read well, so this report is thin. If it is a scan, Claude writes out its text when it reads the CV.</p><?php endif; ?>
     <p style="line-height:1.6;margin-top:0"><?= e($report['summary']) ?></p>
 
+    <?php if (!$report['roles'] && !empty($report['field_note'])): ?>
+      <h3 style="margin-top:18px">Best roles</h3>
+      <p class="small muted" style="margin:0"><?= e($report['field_note']) ?></p>
+    <?php endif; ?>
     <?php if ($report['roles']): ?>
       <h3 style="margin-top:18px">Best roles</h3>
       <ul class="rep-roles">
