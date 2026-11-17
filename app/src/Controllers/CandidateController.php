@@ -641,7 +641,13 @@ final class CandidateController extends Controller
     private function moveStage(array $a, int $to, ?string $note): void
     {
         $u = Auth::user();
-        foreach ((new \Eshcol\Ats\Services\StageMover($this->app))->move($a, $to, $note, (int) $u['id'], ($u['role'] ?? '') === 'owner') as $msg) {
+        $mover = new \Eshcol\Ats\Services\StageMover($this->app);
+        $byOwner = ($u['role'] ?? '') === 'owner';
+        foreach ($mover->move($a, $to, $note, (int) $u['id'], $byOwner) as $msg) {
+            Http::flash('ok', $msg);
+        }
+        // The same decision on their other positions with this client (17 Nov 2026).
+        foreach ($mover->mirror($a, $to, $note, (int) $u['id'], $byOwner) as $msg) {
             Http::flash('ok', $msg);
         }
         (new \Eshcol\Ats\Services\Questionnaires($this->app))->markReviewed((int) $a['id'], (int) $a['candidate_id'], (int) $u['id']);
@@ -756,9 +762,17 @@ final class CandidateController extends Controller
         if (($_POST['ajax'] ?? '') === '1') {
             Http::json(['ok' => true, 'stage_id' => $to]);
         }
-        // Only ever return to a page on this app (a path starting with one slash).
+        // Only ever return to a page on this app (a path starting with one slash), and to this candidate's row in it
+        // (17 Nov 2026: changing a stage from a list sent you back to the top).
         $back = (string) ($_POST['back'] ?? '');
-        Http::redirect(preg_match('#^/(?![/\\\\])[^\s]*$#', $back) ? $back : '/roles/' . $a['role_id']);
+        Http::redirect(self::backToRow($back, $appId, '/roles/' . (int) $a['role_id']));
+    }
+
+    /** $back (a path on this app, else $fallback) with "#app-{id}" for the row, replacing any anchor it had. Pure. */
+    public static function backToRow(string $back, int $appId, string $fallback): string
+    {
+        $path = preg_match('#^/(?![/\\\\])[^\s]*$#', $back) ? $back : $fallback;
+        return strtok($path, '#') . '#app-' . $appId;
     }
 
     public function override(int $appId): never

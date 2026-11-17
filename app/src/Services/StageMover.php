@@ -25,6 +25,52 @@ final class StageMover
      * Moves it (callers check blocked() first). Returns messages worth showing the person who moved it.
      * @return list<string>
      */
+    /**
+     * The same decision on the candidate's other positions with the same client (Benjamin, 17 Nov 2026: "when I review
+     * a CV I check for both jobs"). Future requirement on one → Future requirement on the others, with the same note.
+     * Under review, Shortlisted or later on one → Not suitable on the others ("taken forward for X instead").
+     * Only positions still in play there (an active stage before Shortlisted) change; nobody is emailed.
+     * Returns the messages to show.
+     */
+    public function mirror(array $a, int $to, ?string $note, int $userId, bool $byOwner): array
+    {
+        $db = $this->app->db;
+        $toStage = $db->one('SELECT id, name, kind FROM stages WHERE id = ?', [$to]);
+        if (!$toStage) {
+            return [];
+        }
+        $role = $db->one('SELECT id, title, client_id FROM roles WHERE id = ?', [$a['role_id']]);
+        if (!$role) {
+            return [];
+        }
+        $future = Stages::is($this->app, $to, Stages::FUTURE);
+        $forward = !$future && $toStage['kind'] === 'active'
+            && (Shortlists::isShortlisted($this->app, $to) || preg_match('/review|screen/i', (string) $toStage['name']));
+        if (!$future && !$forward) {
+            return [];
+        }
+        $target = $future ? $to : (int) (Stages::id($this->app, Stages::NOT_SUITABLE) ?? 0);
+        if (!$target) {
+            return [];
+        }
+        $why = $future ? ('Same as for ' . $role['title'] . ($note !== null && trim($note) !== '' ? ': ' . trim($note) : ''))
+            : 'Taken forward for ' . $role['title'] . ' instead';
+        $msgs = [];
+        foreach ($db->all("SELECT a.*, r.title FROM applications a JOIN roles r ON r.id = a.role_id JOIN stages s ON s.id = a.stage_id
+                WHERE a.candidate_id = ? AND a.id <> ? AND r.client_id = ? AND r.is_pool = 0 AND r.status IN ('open','on_hold') AND s.kind = 'active'",
+                [$a['candidate_id'], $a['id'], $role['client_id']]) as $other) {
+            if (Shortlists::isShortlisted($this->app, (int) $other['stage_id'])) {
+                continue; // already taken forward there: you decide that one yourself
+            }
+            $this->move($other, $target, mb_substr($why, 0, 255), $userId, $byOwner);
+            $msgs[] = 'Also on ' . $other['title'] . ': ' . ($future ? 'Future requirement' : 'Not suitable') . ' (' . ($future ? 'same as here' : 'taken forward for ' . $role['title'] . ' instead') . ').';
+        }
+        if ($msgs) {
+            Audit::log('stage_mirrored', 'candidate', (int) $a['candidate_id'], ['from_role' => (int) $role['id'], 'to' => $target, 'n' => count($msgs)]);
+        }
+        return $msgs;
+    }
+
     public function move(array $a, int $to, ?string $note, int $userId, bool $byOwner): array
     {
         $db = $this->app->db;

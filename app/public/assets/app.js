@@ -32,6 +32,9 @@
         var h = e.target.form.querySelector('input[name="note"]') || e.target.form.appendChild(Object.assign(document.createElement('input'), { type: 'hidden', name: 'note' }));
         h.value = note.slice(0, 255);
       }
+      // Come back to the same place after the page reloads (17 Nov 2026): the server returns to this row; if the row
+      // has left the list (e.g. Not suitable inside "Responded"), the same scroll position is used instead.
+      try { sessionStorage.setItem('ats-return', JSON.stringify({ p: location.pathname + location.search, y: window.scrollY, t: Date.now() })); } catch (err) { /* private mode: the row anchor still works */ }
       e.target.form.submit();
     }
   });
@@ -351,4 +354,17 @@ document.addEventListener('click', function (e) {
       a.setAttribute('href', from.pathname + from.search + (app ? '#app-' + app : (from.hash || '')));
     }
   } catch (e) { /* an odd referrer: keep the server link */ }
+})();
+// After a stage change from a list's dropdown (17 Nov 2026): land on the row (#app-…), or, when it has left the list,
+// at the scroll position you were at. Only for the same page, within a minute.
+(function () {
+  var raw = null;
+  try { raw = sessionStorage.getItem('ats-return'); sessionStorage.removeItem('ats-return'); } catch (e) { return; }
+  if (!raw) { return; }
+  var r;
+  try { r = JSON.parse(raw); } catch (e) { return; }
+  if (!r || r.p !== location.pathname + location.search || Date.now() - r.t > 60000) { return; }
+  var id = decodeURIComponent(location.hash.slice(1));
+  if (id && document.getElementById(id)) { return; } // the row is still here: the tab script scrolls to it
+  window.scrollTo(0, r.y || 0);
 })();

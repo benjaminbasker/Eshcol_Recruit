@@ -374,7 +374,7 @@ if ($hasMsgs):
       $toReview = $sq && $sq['status'] === 'answered' && empty($sq['reviewed_at']) && ($a['stage_kind'] ?? '') === 'active' && in_array($a['role_status'] ?? 'open', ['open', 'on_hold', 'draft'], true);
       $fromList = ($_GET['from'] ?? '') === 'dashboard'; ?>
       <?php $appShort = \Eshcol\Ats\Services\Shortlists::isShortlisted(\Eshcol\Ats\App::get(), (int) $a['stage_id']); ?>
-      <div class="card<?= $toReview ? ' to-review' : '' ?><?= $appShort ? ' short-panel' : '' ?>">
+      <div id="app-<?= (int) $a['id'] ?>" class="card<?= $toReview ? ' to-review' : '' ?><?= $appShort ? ' short-panel' : '' ?>">
         <div class="actions" style="justify-content:space-between;align-items:flex-start">
           <div><a href="/roles/<?= $a['role_id'] ?>"><b><?= e($a['title']) ?></b></a><?= $appShort ? ' <span class="chip shorted" style="text-decoration:none">✓ ' . e($a['stage'] ?? 'Shortlisted') . '</span>' : '' ?><br><span class="small muted"><?= e($a['client']) ?> · <?= e($a['code']) ?> · added <?= e(nice_date($a['applied_at'])) ?></span></div>
           <span class="score <?= score_class($a['eff_score'] !== null ? (int) $a['eff_score'] : null, (int) $a['score_threshold']) ?>"><?= $a['eff_score'] ?? '–' ?></span>
