@@ -40,6 +40,7 @@ $isContractor = ($user['role'] ?? '') === 'contractor'; // sees only their own p
       <div class="label">Work</div>
       <a href="/upload"<?= $on('/upload') ?>><?= icon('upload') ?>Upload CVs</a>
       <?php if (!$isContractor): ?>
+      <a href="/calendar"<?= $on('/calendar') ?>><?= icon('calendar') ?>Calendar</a>
       <a href="/details-requests"<?= $on('/details-requests') ?>><?= icon('check') ?>Responses</a>
       <a href="/messages"<?= $on('/messages') ?>><?= icon('chat') ?>Messages<?= $unreadMsgs ? '<span class="count" title="Candidates with new messages">' . $unreadMsgs . '</span>' : '' ?></a>
       <a href="/emails"<?= $on('/emails') ?>><?= icon('mail') ?>Emails<?= $heldMail ? '<span class="count" title="Held for you to check">' . $heldMail . '</span>' : '' ?></a>

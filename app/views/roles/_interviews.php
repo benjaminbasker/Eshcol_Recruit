@@ -7,7 +7,7 @@ $upcoming = array_filter($ivs, fn ($i) => in_array($i['status'], ['choosing', 'b
 ?>
 <section class="card" id="interviews">
   <div class="actions" style="justify-content:space-between;align-items:center">
-    <h2 style="margin:0">Interviews</h2>
+    <h2 style="margin:0">Interviews <a class="small" style="font-weight:600;margin-left:8px" href="/calendar?client=<?= (int) $role['client_id'] ?>">Open the calendar ›</a></h2>
     <?php if ($clientShortlisted): ?>
       <form method="post" action="/roles/<?= (int) $role['id'] ?>/interviews/invite"><?= csrf() ?><input type="hidden" name="round" value="1">
         <button class="btn small" type="submit" data-confirm-click="Email everyone the client marked Shortlist a link to choose a round 1 time?">Invite the client's shortlist to choose a time</button></form>

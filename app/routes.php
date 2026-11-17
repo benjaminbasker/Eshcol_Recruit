@@ -294,3 +294,9 @@ $router->post('/candidates/views', [CandidateController::class, 'saveView']);
 $router->post('/candidates/views/{id}/delete', [CandidateController::class, 'deleteView']);
 $router->get('/applications/{id}/why', [CandidateController::class, 'why']); // "Why this score", loaded when opened (B12)
 $router->get('/reports', [\Eshcol\Ats\Controllers\ReportController::class, 'index']); // B10, owner only
+
+// The interview calendar (17 Nov 2026).
+$router->get('/calendar', [\Eshcol\Ats\Controllers\CalendarController::class, 'index']);
+$router->post('/calendar/allot', [\Eshcol\Ats\Controllers\CalendarController::class, 'allot']);
+$router->post('/calendar/times', [\Eshcol\Ats\Controllers\CalendarController::class, 'addTimes']);
+$router->post('/calendar/remove', [\Eshcol\Ats\Controllers\CalendarController::class, 'removeTime']);

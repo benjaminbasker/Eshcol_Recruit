@@ -55,6 +55,11 @@ final class Interviews
     public function addSlots(int $roleId, int $round, string $kind, array $times, int $duration, string $source, ?int $shortlistId = null): int
     {
         $db = $this->app->db;
+        // One set of times per client (Benjamin, 17 Nov 2026): a time the client gives is offered on all its open
+        // positions (one interviewer); a time taken by one candidate is then gone for all (clashAt / openSlots).
+        $clientId = (int) $db->col('SELECT client_id FROM roles WHERE id = ?', [$roleId]);
+        $roleIds = array_values(array_unique(array_merge([$roleId], array_map('intval', array_column($db->all(
+            "SELECT id FROM roles WHERE client_id = ? AND is_pool = 0 AND status IN ('open','on_hold') ORDER BY id", [$clientId]), 'id')))));
         $n = 0;
         foreach ($times as $t) {
             $ts = strtotime(str_replace('T', ' ', trim((string) $t)));
@@ -62,12 +67,16 @@ final class Interviews
                 continue;
             }
             $at = date('Y-m-d H:i:00', $ts);
-            if ($db->col('SELECT 1 FROM interview_slots WHERE role_id = ? AND round = ? AND starts_at = ?', [$roleId, $round, $at])) {
-                continue;
+            $added = false;
+            foreach ($roleIds as $rid) {
+                if ($db->col('SELECT 1 FROM interview_slots WHERE role_id = ? AND round = ? AND starts_at = ?', [$rid, $round, $at])) {
+                    continue;
+                }
+                $db->insert('interview_slots', ['role_id' => $rid, 'round' => max(1, min(9, $round)), 'kind' => isset(self::KINDS[$kind]) ? $kind : 'virtual',
+                    'starts_at' => $at, 'duration_min' => max(15, min(240, $duration)), 'source' => $source === 'client' ? 'client' : 'you', 'shortlist_id' => $rid === $roleId ? $shortlistId : null]);
+                $added = true;
             }
-            $db->insert('interview_slots', ['role_id' => $roleId, 'round' => max(1, min(9, $round)), 'kind' => isset(self::KINDS[$kind]) ? $kind : 'virtual',
-                'starts_at' => $at, 'duration_min' => max(15, min(240, $duration)), 'source' => $source === 'client' ? 'client' : 'you', 'shortlist_id' => $shortlistId]);
-            $n++;
+            $n += $added ? 1 : 0;
         }
         return $n;
     }
@@ -81,6 +90,100 @@ final class Interviews
             WHERE s.role_id = ? AND s.round = ? AND s.interview_id IS NULL AND s.starts_at > NOW() + INTERVAL 30 MINUTE
               AND NOT EXISTS (' . self::CLASH_SQL . ')
             ORDER BY s.starts_at', [$roleId, $round]);
+    }
+
+    // ---------------------------------------------------------------- the calendar (17 Nov 2026)
+
+    /**
+     * One week of interviews for the calendar: 'booked' (with candidate, position, client, link), 'open' (a client's free
+     * times, one per client and time, with the positions that offer it) and 'choosing' (invited, no time picked yet).
+     * $clientId 0 = all clients. Contractors see only their own positions.
+     */
+    public function week(string $monday, int $clientId, ?array $user): array
+    {
+        $db = $this->app->db;
+        $from = date('Y-m-d 00:00:00', strtotime($monday));
+        $to = date('Y-m-d 00:00:00', strtotime($monday . ' +7 days'));
+        $mine = \Eshcol\Ats\Access::roleFilter($user ?? [], 'r.id');
+        $cl = $clientId ? ' AND r.client_id = ' . $clientId : '';
+        $booked = $db->all("SELECT i.*, a.candidate_id, c.full_name, r.id AS role_id, r.title, r.client_id, cl.name AS client
+            FROM interviews i JOIN applications a ON a.id = i.application_id JOIN roles r ON r.id = a.role_id JOIN clients cl ON cl.id = r.client_id
+            JOIN candidates c ON c.id = a.candidate_id
+            WHERE i.status IN ('booked','done') AND i.starts_at >= ? AND i.starts_at < ? AND $mine $cl ORDER BY i.starts_at", [$from, $to]);
+        $open = [];
+        foreach ($db->all("SELECT s.*, r.title, r.client_id, cl.name AS client FROM interview_slots s JOIN roles r ON r.id = s.role_id JOIN clients cl ON cl.id = r.client_id
+                WHERE s.interview_id IS NULL AND s.starts_at >= ? AND s.starts_at < ? AND s.starts_at > NOW() AND r.status IN ('open','on_hold') AND $mine $cl
+                  AND NOT EXISTS (" . self::CLASH_SQL . ") ORDER BY s.starts_at, r.id", [$from, $to]) as $s) {
+            $k = $s['client_id'] . '|' . $s['starts_at'] . '|' . $s['round'];
+            $open[$k] ??= ['slot_id' => (int) $s['id'], 'starts_at' => $s['starts_at'], 'duration_min' => (int) $s['duration_min'], 'kind' => $s['kind'],
+                'round' => (int) $s['round'], 'client_id' => (int) $s['client_id'], 'client' => $s['client'], 'positions' => [], 'slot_ids' => []];
+            $open[$k]['positions'][(int) $s['role_id']] = $s['title'];
+            $open[$k]['slot_ids'][] = (int) $s['id'];
+        }
+        $choosing = $db->all("SELECT i.*, a.candidate_id, c.full_name, r.title, r.client_id, cl.name AS client FROM interviews i JOIN applications a ON a.id = i.application_id
+            JOIN roles r ON r.id = a.role_id JOIN clients cl ON cl.id = r.client_id JOIN candidates c ON c.id = a.candidate_id
+            WHERE i.status = 'choosing' AND $mine $cl ORDER BY i.id");
+        return ['booked' => $booked, 'open' => array_values($open), 'choosing' => $choosing];
+    }
+
+    /**
+     * Who can be given a client's open time: candidates on its open positions at Shortlisted or later (Submitted to client,
+     * Client interview), still in play, with no interview booked from now on. Grouped by position.
+     */
+    public function allottable(int $clientId, ?array $user): array
+    {
+        $db = $this->app->db;
+        $mine = \Eshcol\Ats\Access::roleFilter($user ?? [], 'r.id');
+        $out = [];
+        foreach ($db->all("SELECT a.id, a.stage_id, a.role_id, c.full_name, r.title, s.name AS stage FROM applications a JOIN roles r ON r.id = a.role_id
+                JOIN candidates c ON c.id = a.candidate_id JOIN stages s ON s.id = a.stage_id
+                WHERE r.client_id = ? AND r.is_pool = 0 AND r.status IN ('open','on_hold') AND s.kind = 'active' AND $mine
+                  AND NOT EXISTS (SELECT 1 FROM interviews i WHERE i.application_id = a.id AND i.status = 'booked' AND i.starts_at >= NOW())
+                ORDER BY r.title, c.full_name", [$clientId]) as $a) {
+            if (Shortlists::isShortlisted($this->app, (int) $a['stage_id'])) {
+                $out[$a['title']][] = $a;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Gives a client's open time to a candidate (from the calendar): books it as a direct booking would (call letter to
+     * the candidate, confirmation to the client), and marks that position's slot as taken. Returns [ok, message].
+     */
+    public function allot(int $slotId, int $applicationId, int $userId): array
+    {
+        $db = $this->app->db;
+        $slot = $db->one('SELECT s.*, r.client_id FROM interview_slots s JOIN roles r ON r.id = s.role_id WHERE s.id = ?', [$slotId]);
+        $a = $this->application($applicationId);
+        if (!$slot || !$a || (int) $a['client_id'] !== (int) $slot['client_id']) {
+            return [false, 'That time or candidate was not found for this client.'];
+        }
+        if ($slot['interview_id']) {
+            return [false, 'Sorry, that time has just been taken.'];
+        }
+        $c = $db->one('SELECT meeting_link, interview_address, maps_url FROM clients WHERE id = ?', [$a['client_id']]) ?: [];
+        [$ok, $msg, $id] = $this->book($applicationId, max(1, $this->nextRound($applicationId)), (string) $slot['kind'], (string) $slot['starts_at'], (int) $slot['duration_min'],
+            ['meeting_link' => $c['meeting_link'] ?? '', 'address' => $c['interview_address'] ?? '', 'maps_url' => $c['maps_url'] ?? ''], $userId);
+        if ($ok) {
+            // The slot on the candidate's own position if there is one at that time, else the one clicked.
+            $own = (int) $db->col('SELECT id FROM interview_slots WHERE role_id = ? AND starts_at = ? AND interview_id IS NULL LIMIT 1', [$a['role_id'], $slot['starts_at']]);
+            $db->run('UPDATE interview_slots SET interview_id = ? WHERE id = ?', [$id, $own ?: $slotId]);
+            Audit::log('interview_allotted', 'candidate', (int) $a['candidate_id'], ['interview' => $id, 'slot' => $own ?: $slotId]);
+        }
+        return [$ok, $msg];
+    }
+
+    /** Removes a client's free time from every position that offers it (the calendar's ×). Booked times stay. */
+    public function removeClientTime(int $slotId): int
+    {
+        $db = $this->app->db;
+        $s = $db->one('SELECT s.*, r.client_id FROM interview_slots s JOIN roles r ON r.id = s.role_id WHERE s.id = ?', [$slotId]);
+        if (!$s) {
+            return 0;
+        }
+        return $db->run('DELETE s FROM interview_slots s JOIN roles r ON r.id = s.role_id WHERE r.client_id = ? AND s.starts_at = ? AND s.round = ? AND s.interview_id IS NULL',
+            [$s['client_id'], $s['starts_at'], $s['round']])->rowCount();
     }
 
     /** The next round for an application: one more than the last round that happened. */

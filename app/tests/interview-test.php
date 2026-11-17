@@ -210,4 +210,26 @@ $check('booking 4 pm directly for the Associate is refused, naming who has it: "
 $check('4:30 is free: booked', $okD2);
 $check('a 45-minute booking at 4:15 overlaps both: refused', $svc->clashAt($clientId, date('Y-m-d 16:15:00', strtotime('+4 days')), 45) !== null);
 $check('another client\'s interviews never block this one', $svc->clashAt($clientId + 999999, "$t5:00", 30) === null);
+
+echo "\nThe calendar (17 Nov 2026): client times once, allot from a slot\n";
+$t7 = date('Y-m-d 11:00', strtotime('+5 days'));
+$t8 = date('Y-m-d 11:30', strtotime('+5 days'));
+$added = $svc->addSlots($role, 1, 'virtual', [$t7, $t8], 30, 'client');
+$check('times added on one position are offered on all the client\'s positions (counted once each)', $added === 2
+    && (int) $db->col('SELECT COUNT(*) FROM interview_slots WHERE role_id = ? AND starts_at = ?', [$role2, "$t7:00"]) === 1);
+$wk = $svc->week(date('Y-m-d', strtotime('monday this week', strtotime($t7))), $clientId, null);
+$open7 = array_values(array_filter($wk['open'], fn ($o) => $o['starts_at'] === "$t7:00"));
+$check('the week shows one free 11:00 for the client, naming both positions', count($open7) === 1 && count($open7[0]['positions']) === 2);
+$db->run('UPDATE applications SET stage_id = ? WHERE id = ?', [(int) \Eshcol\Ats\Services\Stages::id($app, \Eshcol\Ats\Services\Stages::SHORTLISTED), $m1a2]);
+$db->run("UPDATE interviews SET status = 'cancelled' WHERE application_id = ?", [$m1a2]);
+$who = $svc->allottable($clientId, null);
+$check('who can be allotted: shortlisted or later, nothing booked ahead', in_array('Mohan Clashtest', array_map(fn ($p) => preg_replace('/ \w+$/', ' Clashtest', $p['full_name']), array_merge(...array_values($who))), true) || (bool) array_filter(array_merge(...array_values($who)), fn ($p) => str_starts_with($p['full_name'], 'Mohan')));
+[$okA2, $msgA2] = $svc->allot((int) $open7[0]['slot_id'], $m1a2, $uid);
+$check('allot books it and sends the call letter: "' . $msgA2 . '"', $okA2 && (bool) $db->col("SELECT 1 FROM interviews WHERE application_id = ? AND status = 'booked' AND starts_at = ?", [$m1a2, "$t7:00"]));
+$check('…the slot on his own position is the one taken', (int) $db->col('SELECT COUNT(*) FROM interview_slots WHERE role_id = ? AND starts_at = ? AND interview_id IS NOT NULL', [$role2, "$t7:00"]) === 1);
+$wk2 = $svc->week(date('Y-m-d', strtotime('monday this week', strtotime($t7))), $clientId, null);
+$check('…and 11:00 is no longer free for anyone', !array_filter($wk2['open'], fn ($o) => $o['starts_at'] === "$t7:00"));
+$open8 = array_values(array_filter($wk2['open'], fn ($o) => $o['starts_at'] === "$t8:00"));
+$check('removing a free time takes it off every position', $svc->removeClientTime((int) $open8[0]['slot_id']) === 2 && !$db->col('SELECT 1 FROM interview_slots s JOIN roles r ON r.id = s.role_id WHERE r.client_id = ? AND s.starts_at = ?', [$clientId, "$t8:00"]));
+$check('the week starts on Monday', \Eshcol\Ats\Controllers\CalendarController::monday('2026-11-19') === '2026-11-16' && \Eshcol\Ats\Controllers\CalendarController::monday('2026-11-16') === '2026-11-16');
 exit(0);

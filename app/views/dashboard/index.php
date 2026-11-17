@@ -168,7 +168,7 @@ $restAlerts = array_slice($alerts, 3); ?>
     </section>
 
     <section class="card">
-      <div class="card-head"><h2><?= icon('calendar') ?> Interviews</h2><span class="small muted">Next 7 days</span></div>
+      <div class="card-head"><h2><?= icon('calendar') ?> Interviews</h2><a class="small" href="/calendar">Calendar ›</a></div>
       <?php if (!$schedule): ?>
         <p class="muted small" style="margin:0">No interviews booked. When a candidate picks a time, it appears here.</p>
       <?php else: $lastDay = null; ?>
