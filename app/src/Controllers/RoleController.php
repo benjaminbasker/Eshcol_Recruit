@@ -287,7 +287,8 @@ final class RoleController extends Controller
         $this->findOr404('candidates', $cid);
         $added = (new CandidateImporter($this->app))->attach($cid, $id, (int) Auth::user()['id'], 'database');
         Audit::log('added_from_database', 'role', $id, ['candidate' => $cid]);
-        Http::flash('ok', $added ? 'Added to the role and scored.' : 'Already on this role.');
+        $reason = $added ? $this->db->col("SELECT stage_reason FROM applications WHERE candidate_id = ? AND role_id = ?", [$cid, $id]) : null;
+        Http::flash('ok', !$added ? 'Already on this role.' : ($reason ? "Added, but screened out straight away: $reason" : 'Added to the role and scored.'));
         Http::redirect(Http::input('back') === 'matches' ? "/roles/$id/matches" : "/roles/$id");
     }
 

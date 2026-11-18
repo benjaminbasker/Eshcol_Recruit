@@ -282,8 +282,28 @@ final class CandidateImporter
         ]);
         $db->insert('stage_history', ['application_id' => $appId, 'to_stage_id' => $first, 'user_id' => $userId, 'note' => 'Added']);
         $this->scoreApplication($appId);
+        // Picked from the database onto a position they don't actually qualify for (B.Com, or local
+        // candidates only): screened out straight away, same as a self-application (Benjamin, 18 Nov 2026).
+        // No need to review the CV for this, and no Claude assessment is spent on it.
+        $screenedOut = false;
+        if ($source === 'database') {
+            $role = $db->one('SELECT * FROM roles WHERE id = ?', [$roleId]);
+            if ($role && !(bool) ($role['is_pool'] ?? false)) {
+                $cand = $db->one('SELECT * FROM candidates WHERE id = ?', [$candidateId]);
+                $cat = (new Categoriser($this->app))->current($candidateId);
+                $fail = (new FunctionRouting($this->app))->screenFail($cand, $cat, $role);
+                if ($fail && ($notSuitable = (int) (Stages::id($this->app, Stages::NOT_SUITABLE) ?? 0))) {
+                    [, $why] = $fail;
+                    $reason = mb_substr(ucfirst($why) . '.', 0, 255);
+                    $db->update('applications', ['stage_id' => $notSuitable, 'stage_reason' => $reason, 'stage_reason_at' => date('Y-m-d H:i:s'), 'fit_note' => mb_substr("Screened out: $why", 0, 255)], $appId);
+                    $db->insert('stage_history', ['application_id' => $appId, 'from_stage_id' => $first, 'to_stage_id' => $notSuitable, 'user_id' => $userId, 'note' => mb_substr("Screened out automatically: $why", 0, 255)]);
+                    Audit::log('candidate_screened_out', 'candidate', $candidateId, ['role' => $roleId, 'why' => $why]);
+                    $screenedOut = true;
+                }
+            }
+        }
         // If the free check finds them relevant, Claude assesses them (after it has read the CV).
-        if (FitAssessor::enabled($this->app)) {
+        if (!$screenedOut && FitAssessor::enabled($this->app)) {
             (new FitAssessor($this->app))->queueForCandidate($candidateId);
         }
         if (!in_array($source, ['database', 'routed'], true)) {

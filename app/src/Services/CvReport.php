@@ -46,8 +46,9 @@ final class CvReport
             $history = array_merge($byClaude, array_values(array_filter($history, fn ($h) => $h['education'])));
             usort($history, fn ($a, $b) => $b['start'] <=> $a['start']);
         }
-        $roles = $this->rankRoles($c, $text, $skills, $candidateId);
-        $fieldNote = $this->fieldNote($c, $roles);
+        $screenNote = null;
+        $roles = $this->rankRoles($c, $text, $skills, $candidateId, $screenNote);
+        $fieldNote = $this->fieldNote($c, $roles, $screenNote);
         $flags = $this->flags($c, $text, $history, $roles[0] ?? null);
         return [
             'summary' => $this->summary($c, $found, $quals, $history, $roles, $flags, $fieldNote),
@@ -61,8 +62,8 @@ final class CvReport
         ];
     }
 
-    /** Open roles scored for this candidate, best first. */
-    private function rankRoles(array $c, string $text, Skills $skills, int $candidateId): array
+    /** Open roles scored for this candidate, best first. $screenNote is set when a role in their field was dropped for failing a hard screening rule (B.Com, local candidates only). */
+    private function rankRoles(array $c, string $text, Skills $skills, int $candidateId, ?string &$screenNote = null): array
     {
         $db = $this->app->db;
         $scorer = new Scorer($skills);
@@ -78,6 +79,22 @@ final class CvReport
         $mine = \Eshcol\Ats\Access::roleFilter(\Eshcol\Ats\Auth::user(), 'r.id');
         $roles = $db->all("SELECT r.*, cl.name AS client, cl.interview_address, cl.maps_url FROM roles r JOIN clients cl ON cl.id = r.client_id WHERE r.status = 'open' AND r.is_pool = 0 AND $mine ORDER BY r.id");
         $roles = $this->inTheirField($c, $roles, $on);
+        // A role whose hard screening rules (B.Com, local candidates only) they fail isn't a "best role"
+        // to recommend: there is nothing to review, since adding them would screen them straight out
+        // anyway (Benjamin, 18 Nov 2026). Already-added roles still show, so the pipeline stays visible.
+        $cat = (new Categoriser($this->app))->current($candidateId);
+        $routing = new FunctionRouting($this->app);
+        $roles = array_values(array_filter($roles, function ($r) use ($on, $cat, $c, $routing, &$screenNote) {
+            if (in_array((int) $r['id'], $on, true)) {
+                return true;
+            }
+            $fail = $routing->screenFail($c, $cat, $r);
+            if ($fail) {
+                $screenNote ??= $fail[1];
+                return false;
+            }
+            return true;
+        }));
         // Every open role's requirements in one request (audit P1, 16 Nov 2026), not one per role.
         $critBy = [];
         if ($roles) {
@@ -144,17 +161,22 @@ final class CvReport
     }
 
     /** "No open position in their field (IT, Software & Data / Engineering Projects…). Filed in the … pool." Null when roles were found. */
-    private function fieldNote(array $c, array $roles): ?string
+    private function fieldNote(array $c, array $roles, ?string $screenNote = null): ?string
     {
         if ($roles) {
             return null;
+        }
+        $pool = $this->app->db->col("SELECT r.title FROM applications a JOIN roles r ON r.id = a.role_id WHERE a.candidate_id = ? AND r.is_pool = 1 ORDER BY a.id DESC LIMIT 1", [(int) $c['id']]);
+        // A role in their field exists, but they fail its hard screening (B.Com, local candidates only):
+        // nothing to review here, they go straight to the pool (Benjamin, 18 Nov 2026).
+        if ($screenNote !== null) {
+            return $screenNote . '.' . ($pool ? " Filed in the $pool talent pool, for when a position opens." : '');
         }
         $fields = $this->candidateFields($c);
         if ($fields === null) {
             return null;
         }
         $names = array_map(fn ($f) => Categoriser::functionName($this->app, $f), $fields);
-        $pool = $this->app->db->col("SELECT r.title FROM applications a JOIN roles r ON r.id = a.role_id WHERE a.candidate_id = ? AND r.is_pool = 1 ORDER BY a.id DESC LIMIT 1", [(int) $c['id']]);
         $applied = trim((string) ($c['applied_for'] ?? ''));
         return 'No open position in their field (' . implode(' / ', $names) . ')' . ($applied !== '' ? '; they applied for ' . $applied : '') . '.'
             . ($pool ? " Filed in the $pool talent pool, for when a position opens." : '');

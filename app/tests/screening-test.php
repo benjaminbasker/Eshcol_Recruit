@@ -124,3 +124,30 @@ $cat = ['function_code' => 'ACC', 'secondary_code' => null, 'preferred_cities' =
 $check('a BBM in Pune: not qualified', $res1 === 'not_qualified');
 $check('an MBA only in Pune: on the pipeline, noted "confirm B.Com"', $res2 === 'pipeline' && str_contains($note2, 'confirm B.Com'));
 $check('a B.Com in Jalgaon: another city', $res3 === 'other_city');
+
+echo "\nThe CV report's Best roles never recommends a role whose hard screening they'd fail (18 Nov 2026: Dinesh Chavan, BBA)\n";
+[$bbaCid, $bbaAid] = $person('ZzBBAFree', 'Pune', 'BBA', $applied);
+$db->run('DELETE FROM stage_history WHERE application_id = ?', [$bbaAid]);
+$db->run('DELETE FROM applications WHERE id = ?', [$bbaAid]);
+$rep = (new \Eshcol\Ats\Services\CvReport($app))->build($bbaCid);
+$ids = array_column($rep['roles'] ?? [], 'id');
+$check('BBA, not on the role: not recommended as a best role', !in_array($role, $ids, true));
+
+[$onCid] = $person('ZzBBAOnRole', 'Pune', 'BBA', $applied);
+$rep2 = (new \Eshcol\Ats\Services\CvReport($app))->build($onCid);
+$ids2 = array_column($rep2['roles'] ?? [], 'id');
+$check('BBA, already on the role: still shown (the pipeline stays visible)', in_array($role, $ids2, true));
+
+echo "\nAdding from the database screens straight to Not suitable instead of landing as Applied\n";
+$imp = new \Eshcol\Ats\Services\CandidateImporter($app);
+$added = $imp->attach($bbaCid, $role, $uid, 'database');
+$appRow = $db->one('SELECT * FROM applications WHERE candidate_id = ? AND role_id = ?', [$bbaCid, $role]);
+$check('added, but straight to Not suitable with the reason', $added && (int) $appRow['stage_id'] === $ns && str_contains((string) $appRow['stage_reason'], 'Not a B.Com'));
+$check('the stage history records it', str_contains((string) $db->col('SELECT note FROM stage_history WHERE application_id = ? ORDER BY id DESC LIMIT 1', [$appRow['id']]), 'Screened out'));
+
+[$bcomCid, $bcomAid] = $person('ZzBComFree', 'Pune', 'B.Com', $applied);
+$db->run('DELETE FROM stage_history WHERE application_id = ?', [$bcomAid]);
+$db->run('DELETE FROM applications WHERE id = ?', [$bcomAid]);
+$added2 = $imp->attach($bcomCid, $role, $uid, 'database');
+$appRow2 = $db->one('SELECT * FROM applications WHERE candidate_id = ? AND role_id = ?', [$bcomCid, $role]);
+$check('a B.Com candidate added from the database lands as Applied, not screened out', $added2 && (int) $appRow2['stage_id'] === $applied);

@@ -609,7 +609,8 @@ final class CandidateController extends Controller
         }
         $added = (new CandidateImporter($this->app))->attach($id, $roleId, (int) Auth::user()['id'], 'database');
         Audit::log('added_from_database', 'role', $roleId, ['candidate' => $id]);
-        Http::flash('ok', $added ? 'Added to the role and scored.' : 'Already on that role.');
+        $reason = $added ? $this->db->col("SELECT stage_reason FROM applications WHERE candidate_id = ? AND role_id = ?", [$id, $roleId]) : null;
+        Http::flash('ok', !$added ? 'Already on that role.' : ($reason ? "Added, but screened out straight away: $reason" : 'Added to the role and scored.'));
         Http::redirect("/candidates/$id");
     }
 
