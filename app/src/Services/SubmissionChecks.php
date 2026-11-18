@@ -67,9 +67,10 @@ final class SubmissionChecks
         // 1. Permission.
         if ($a['permission'] === 'not_yet') {
             $w[] = ['They asked us to check with them before putting them forward.', false];
-        } elseif ($a['permission'] !== 'yes') {
-            $w[] = ['No permission recorded to put them forward (details form, or "They agreed" on their page).', false];
         }
+        // No warning when nothing is recorded (Benjamin, 17 Nov 2026): he always has the candidate's email agreeing to the
+        // position before he sends their CV, so "No permission recorded" only got in the way. A candidate who said "Not
+        // yet, please ask me first" still warns (above).
         // 2. Already sent to this client recently, by anyone, for any position.
         if ($a['client_id']) {
             $prev = $db->one("SELECT s.sent_at, r2.title FROM shortlist_items si JOIN shortlists s ON s.id = si.shortlist_id JOIN applications a2 ON a2.id = si.application_id

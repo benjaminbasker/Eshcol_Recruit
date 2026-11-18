@@ -62,7 +62,7 @@ echo "What gets flagged\n";
 [$ravi, $appRavi] = $person('Ravi Unknown', $role);
 $db->run('UPDATE candidates SET ctc_min_lpa = NULL, ctc_expected_lpa = NULL, notice_days = NULL WHERE id = ?', [$ravi]);
 $w = $chk->forApplication($appRavi);
-$check('no permission, salary not known, notice not known', str_contains($texts($w), 'No permission recorded') && str_contains($texts($w), 'Salary expectation not known')
+$check('nothing recorded about permission: no warning any more (Benjamin, 17 Nov 2026); salary and notice not known still warn', !str_contains($texts($w), 'permission') && str_contains($texts($w), 'Salary expectation not known')
     && str_contains($texts($w), 'Notice period not known'));
 $db->run("UPDATE candidates SET ctc_min_lpa = 5.5, notice_days = 60, cv_dated = '2024-06-01' WHERE id = ?", [$ravi]);
 $db->insert('fit_assessments', ['application_id' => $appRavi, 'candidate_id' => $ravi, 'role_id' => $role, 'status' => 'done', 'score' => 40, 'band' => 'Weak']);
@@ -73,9 +73,10 @@ $check('none of those needs a confirming tick (a reason is enough)', !array_filt
 
 echo "\nPermission\n";
 $chk->setPermission($appRavi, true, 'phone', $uid);
-$check('"They agreed" (after a call) clears the permission line', !str_contains($texts($chk->forApplication($appRavi)), 'permission'));
+$check('"They agreed" (after a call) still records it, and there is no warning', !str_contains($texts($chk->forApplication($appRavi)), 'permission')
+    && $db->col('SELECT permission FROM applications WHERE id = ?', [$appRavi]) === 'yes');
 $chk->setPermission($appRavi, false, 'phone', $uid);
-$check('"Not yet" says to check with them first', str_contains($texts($chk->forApplication($appRavi)), 'check with them before'));
+$check('"Not yet, please ask me first" (the candidate asked) still warns: check with them first', str_contains($texts($chk->forApplication($appRavi)), 'check with them before'));
 
 echo "\nAlready sent to this client\n";
 [$sita, $appSita] = $person('Sita Clean', $role);
