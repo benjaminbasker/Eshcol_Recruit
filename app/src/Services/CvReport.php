@@ -52,6 +52,7 @@ final class CvReport
         $flags = $this->flags($c, $text, $history, $roles[0] ?? null);
         return [
             'summary' => $this->summary($c, $found, $quals, $history, $roles, $flags, $fieldNote),
+            'brief' => $this->brief($c, $found, $quals, $history, $roles, $flags, $fieldNote),
             'field_note' => $fieldNote,
             'skills' => $found,
             'history' => $history,
@@ -392,6 +393,60 @@ final class CvReport
             $p[] = 'To check: ' . implode(' ', array_map(fn ($f) => $f['text'], $points));
         }
         return implode(' ', $p);
+    }
+
+    /**
+     * The same facts as summary(), laid out to be read at a glance (option B, Benjamin, 20 Nov 2026): four tiles with the
+     * deciding numbers, then "Who they are", "Track record", "Fit" and "To check" as short sections. Nothing new is said.
+     * @return array{tiles: list<array{0:string,1:string}>, who: string, jobs: list<string>, more_jobs: int, fit: list<string>, check: list<string>}
+     */
+    private function brief(array $c, array $skills, string $quals, array $history, array $roles, array $flags, ?string $fieldNote): array
+    {
+        $months = exp_now($c);
+        $b = $roles[0] ?? null;
+        $money = $c['ctc_current_lpa'] !== null || $c['ctc_expected_lpa'] !== null
+            ? lpa($c['ctc_current_lpa']) . ' → ' . lpa($c['ctc_expected_lpa']) : 'Not stated';
+        $tiles = [
+            [$months !== null ? experience($months) : 'Not stated', 'Experience'],
+            [$money, 'Current → expected' . ($c['ctc_min_lpa'] !== null ? ' (lowest ' . lpa($c['ctc_min_lpa']) . ')' : '')],
+            [$c['notice_days'] === null ? 'Not stated' : ((int) $c['notice_days'] === 0 ? 'Immediate' : (int) $c['notice_days'] . ' days'), 'Notice'],
+            $b ? ($b['claude'] ? [$b['claude']['score'] . ' · ' . $b['claude']['band'], 'Claude, ' . $b['title']] : [$b['score'] . '%', 'Keyword match, ' . $b['title']])
+               : ['–', 'No open position to compare'],
+        ];
+        $place = Commute::place($c['locality'] ?? null, $c['location'] ?? null);
+        $who = ($c['current_title'] ? $c['current_title'] . ($c['current_company'] ? ' at ' . $c['current_company'] : '') : 'Current position not stated')
+            . ($place ? ', ' . $place : '')
+            . ($b && !empty($b['commute']['km']) && !empty($b['office']) ? ' (about ' . (int) round((float) $b['commute']['km']) . ' km from the office at ' . $b['office'] . ')' : '')
+            . '.' . ($quals !== '' ? ' ' . $quals . '.' : '');
+        $jobs = array_values(array_filter($history, fn ($h) => !$h['education'] && !$h['break']));
+        $expSaid = fn (array $r): bool => trim((string) $r['experience']) !== '' && !str_contains((string) $r['experience'], 'not set');
+        $fit = [];
+        if ($b) {
+            $fit[] = $b['title'] . ' (' . $b['client'] . '): '
+                . ($b['matched'] || $b['missing'] ? 'meets ' . count($b['matched']) . ' of ' . (count($b['matched']) + count($b['missing'])) . ' must-haves' . ($b['missing'] ? ' (missing ' . implode(', ', $b['missing']) . ')' : '') . '; ' : '')
+                . ($expSaid($b) ? lcfirst($b['experience']) . '; ' : '') . 'keyword match ' . $b['score'] . '%.';
+            if ($b['ctc_over']) {
+                $fit[] = 'Salary is above the budget: ' . $b['ctc_plain'] . '.';
+            }
+            if ($b['notice_over']) {
+                $fit[] = 'Notice is longer than allowed: ' . $b['notice_plain'] . '.';
+            }
+            if (isset($roles[1])) {
+                $n = $roles[1];
+                $fit[] = 'Also: ' . $n['title'] . ' (' . $n['client'] . '), ' . ($n['claude'] ? 'Claude ' . $n['claude']['score'] . ' (' . $n['claude']['band'] . '), ' : '') . 'keyword ' . $n['score'] . '%' . ($expSaid($n) ? ', ' . lcfirst($n['experience']) : '') . '.';
+            }
+        } else {
+            $fit[] = $fieldNote ?? 'There are no open positions to compare against yet.';
+        }
+        if ($skills) {
+            $fit[] = 'Strengths in the CV: ' . implode(', ', array_slice($skills, 0, 10)) . (count($skills) > 10 ? ' and ' . (count($skills) - 10) . ' more' : '') . '.';
+        }
+        $check = array_map(fn ($f) => $f['text'], array_values(array_filter($flags, fn ($f) => in_array($f['kind'], ['gap', 'short', 'student', 'dates', 'old_cv'], true))));
+        return [
+            'tiles' => $tiles, 'who' => $who,
+            'jobs' => array_map(fn ($j) => $j['label'] . ', ' . $j['from'] . ' – ' . $j['to'], array_slice($jobs, 0, 4)),
+            'more_jobs' => max(0, count($jobs) - 4), 'fit' => $fit, 'check' => $check,
+        ];
     }
 
     private function questions(array $c, ?array $best, array $flags): array

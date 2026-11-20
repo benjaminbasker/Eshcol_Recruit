@@ -215,7 +215,15 @@ if ($hasMsgs):
 
   <div class="tab-panel" data-panel="rep-free" id="tab-rep-free">
     <?php if (!$report['readable']): ?><p class="small muted">The CV text could not be read well, so this report is thin. If it is a scan, Claude writes out its text when it reads the CV.</p><?php endif; ?>
-    <p style="line-height:1.6;margin-top:0"><?= e($report['summary']) ?></p>
+    <?php // Option B (Benjamin, 20 Nov 2026): the deciding numbers first, then short headed sections, instead of one paragraph.
+      $bf = $report['brief']; ?>
+    <div class="brief">
+      <div class="brief-tiles"><?php foreach ($bf['tiles'] as [$v, $l]): ?><div class="brief-tile"><b><?= e($v) ?></b><span><?= e($l) ?></span></div><?php endforeach; ?></div>
+      <h4>Who they are</h4><p><?= e($bf['who']) ?></p>
+      <?php if ($bf['jobs']): ?><h4>Track record</h4><ul><?php foreach ($bf['jobs'] as $j): ?><li><?= e($j) ?></li><?php endforeach; ?><?php if ($bf['more_jobs']): ?><li class="muted">and <?= (int) $bf['more_jobs'] ?> earlier</li><?php endif; ?></ul><?php endif; ?>
+      <h4>Fit</h4><ul><?php foreach ($bf['fit'] as $f): ?><li><?= e($f) ?></li><?php endforeach; ?></ul>
+      <?php if ($bf['check']): ?><h4>To check on the call</h4><ul class="brief-check"><?php foreach ($bf['check'] as $f): ?><li><?= e($f) ?></li><?php endforeach; ?></ul><?php endif; ?>
+    </div>
 
     <?php if (!$report['roles'] && !empty($report['field_note'])): ?>
       <h3 style="margin-top:18px">Best roles</h3>

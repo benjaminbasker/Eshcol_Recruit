@@ -147,6 +147,15 @@ final class Shortlists
         $office = $cm->localityIn($cl['interview_address'] ?? null, $cl['maps_url'] ?? null);
         $how = $office ? $cm->between($a['locality'] ?? null, $a['location'] ?? null, $office) : null;
         $distance = self::distanceLine($how, $office['locality'] ?? null);
+        // Career at a glance for the client's cover page (option C, 20 Nov 2026): the dated jobs, newest first, as the CV
+        // reader found them (Claude's reading when there is one, else the dates in the CV text). Only facts from the CV.
+        $hist = (new AiReading($this->app))->history((int) $a['candidate_id']);
+        if ($hist === null) {
+            $hist = CvReport::parseHistory((string) $db->col('SELECT text FROM cv_files WHERE candidate_id = ? AND text IS NOT NULL ORDER BY id DESC LIMIT 1', [$a['candidate_id']]));
+        }
+        $jobs = array_values(array_filter($hist, fn ($h) => empty($h['education']) && empty($h['break'])));
+        usort($jobs, fn ($x, $y) => $y['start'] <=> $x['start']);
+        $career = array_map(fn ($j) => ['role' => (string) $j['label'], 'when' => $j['from'] . ' – ' . $j['to']], array_slice($jobs, 0, 5));
         return array_filter([
             'ref' => ref_candidate($a['candidate_id']),
             'name' => $a['full_name'] ?: 'Candidate',
@@ -165,6 +174,7 @@ final class Shortlists
             'matched' => $matched,
             'skills' => array_values(array_diff($skills, $matched)),
             'answers' => $answers,
+            'career' => $career,
             // Plain figures for the email table (only when salary is shown).
             'inr_current' => $showSalary && $a['ctc_current_lpa'] !== null ? inr($a['ctc_current_lpa']) : null,
             'inr_expected' => $showSalary && $a['ctc_expected_lpa'] !== null ? inr($a['ctc_expected_lpa']) : null,
@@ -511,12 +521,16 @@ final class Shortlists
         $u = $this->sender($s);
         $p = $item['p'] ?? json_decode((string) $item['profile'], true);
         $logo = 'data:image/png;base64,' . base64_encode((string) file_get_contents($this->app->root . '/templates/logo.png'));
+        // Option C (Benjamin, 20 Nov 2026): a headline, the career at a glance beside the core skills, then the terms.
+        // Only facts from the CV and the candidate's own answers; never a score or an internal note.
+        $career = $p['career'] ?? [];
+        $currentPos = trim(($p['title'] ?? '') . (isset($p['company']) ? ' at ' . $p['company'] : ''));
+        $headline = implode(' · ', array_filter([$currentPos !== '' ? $currentPos : null, $p['experience'] ?? null, $p['location'] ?? null]));
         $facts = array_filter([
-            'Reference' => $p['ref'] ?? null,
-            'Position applied for' => $s['title'] ?? null,
-            'Current position' => trim(($p['title'] ?? '') . (isset($p['company']) ? ', ' . $p['company'] : ''), ', ') ?: null,
-            'Experience' => $p['experience'] ?? null, 'Location' => $p['location'] ?? null, 'Distance' => $p['distance'] ?? null, 'Qualification' => $p['qualifications'] ?? null,
-            'Notice period' => $p['notice'] ?? null,
+            'Current position' => !$career && $currentPos !== '' ? $currentPos : null,
+            'Experience' => !$career ? ($p['experience'] ?? null) : null,
+            'Distance' => $p['distance'] ?? null,
+            'Availability' => isset($p['notice']) ? ($p['notice'] === 'Immediately' ? 'Can join immediately' : 'Notice period: ' . $p['notice']) : null,
             'Current CTC' => isset($p['inr_current']) ? '₹' . $p['inr_current'] . ' a year' : null,
             'Expected CTC' => isset($p['inr_expected']) ? '₹' . $p['inr_expected'] . ' a year' : null,
             'Lowest acceptable CTC' => isset($p['inr_min']) ? '₹' . $p['inr_min'] . ' a year' : null,
@@ -525,12 +539,29 @@ final class Shortlists
         foreach ($facts as $k => $v) {
             $rows .= '<tr><td class="k">' . $esc($k) . '</td><td>' . $esc($v) . '</td></tr>';
         }
+        $tl = '';
+        foreach ($career as $j) {
+            $tl .= '<tr><td class="dot">&#9679;</td><td class="job"><b>' . $esc($j['role']) . '</b><br><span>' . $esc($j['when']) . '</span></td></tr>';
+        }
+        $chips = '';
+        foreach (array_slice($p['matched'] ?? [], 0, 8) as $m) {
+            $chips .= '<span class="chip m">' . $esc($m) . '</span> ';
+        }
+        foreach (array_slice($p['skills'] ?? [], 0, max(0, 12 - count($p['matched'] ?? []))) as $m) {
+            $chips .= '<span class="chip">' . $esc($m) . '</span> ';
+        }
+        $right = ($chips !== '' ? '<p class="h">Core skills</p><div>' . $chips . '</div>' : '')
+            . (!empty($p['qualifications']) ? '<p class="h" style="margin-top:12px">Qualification</p><p class="v">' . $esc($p['qualifications']) . '</p>' : '');
+        $glance = $tl !== ''
+            ? '<table class="glance"><tr><td class="l"><p class="h">Career at a glance</p><table class="tl">' . $tl . '</table></td><td class="rr">' . $right . '</td></tr></table>'
+            : ($right !== '' ? '<div class="glance1">' . $right . '</div>' : '');
         $contact = array_filter([$u['name'], $u['title'] ?? '', 'Eshcol Global Services (P) Ltd', !empty($u['mobile']) ? 'Mobile: ' . $u['mobile'] : '', $u['email'] ?? '', 'www.eshcolglobal.com']);
         return '<div class="cover"><table class="head"><tr><td><img src="' . $logo . '" style="height:58px"></td><td class="r">CANDIDATE PROFILE<br><b>' . $esc($p['ref'] ?? '') . '</b></td></tr></table>'
             . '<h1>' . $esc($p['name'] ?? 'Candidate') . '</h1><p class="sub">Presented for the ' . $esc($s['title'] ?? '') . ' position</p>'
-            . "<table class=\"facts\">$rows</table>"
+            . ($headline !== '' ? '<p class="headline">' . $esc($headline) . '</p>' : '')
+            . $glance
+            . ($rows !== '' ? "<table class=\"facts\">$rows</table>" : '')
             . (trim((string) $item['summary']) !== '' ? '<div class="remarks"><span class="lbl">Our remarks</span><br>' . nl2br($esc($item['summary'])) . '</div>' : '')
-            . (!empty($p['matched']) ? '<p class="small"><b>Matches the requirements:</b> ' . $esc(implode(', ', $p['matched'])) . '</p>' : '')
             . '<div class="contact"><span class="lbl">Your contact at Eshcol Global</span><br>' . implode('<br>', array_map($esc, $contact)) . '</div>'
             . '<p class="conf">This profile is presented by Eshcol Global Services (P) Ltd. Please quote the reference above when discussing this candidate. Shared in confidence for this role.</p></div>';
     }
@@ -546,6 +577,13 @@ final class Shortlists
             .remarks{background:#FBF5E8;border-left:3px solid #D8B36A;padding:9px 11px;margin:6px 0 12px;font-size:11px}
             .contact{background:#F1EBF9;border-left:3px solid #7946B2;padding:9px 11px;margin-top:16px;font-size:11px;line-height:1.5}
             .lbl{font-size:8.5px;letter-spacing:1px;text-transform:uppercase;color:#7E6114;font-weight:bold} .contact .lbl{color:#573A73}
+            .headline{margin:-6px 0 14px;font-size:12px;color:#2A2238;font-weight:bold}
+            .glance{width:100%;border-collapse:collapse;margin:0 0 12px;border:1px solid #E7E2EF} .glance td{vertical-align:top;padding:10px 12px}
+            .glance .l{width:52%;border-right:1px solid #E7E2EF} .glance1{border:1px solid #E7E2EF;padding:10px 12px;margin:0 0 12px}
+            .h{margin:0 0 6px;font-size:8.5px;letter-spacing:1px;text-transform:uppercase;color:#7946B2;font-weight:bold} .v{margin:0}
+            .tl{border-collapse:collapse;width:100%} .tl td{padding:0 0 7px;vertical-align:top} .tl .dot{width:12px;color:#7946B2;font-size:9px;padding-top:1px} .tl .job span{color:#6E6780;font-size:9.5px}
+            .chip{display:inline-block;padding:2px 7px;margin:0 2px 4px 0;border:1px solid #DCCDF0;background:#F4EFFB;color:#5B2C93;border-radius:8px;font-size:9.5px}
+            .chip.m{background:#E7F5EC;border-color:#CDE8D5;color:#1F7A45}
             .small{font-size:10px} .conf{margin-top:26px;font-size:8.5px;color:#6E6780;border-top:1px solid #E7E2EF;padding-top:6px}
             .stamp-h{position:fixed;top:-20px;right:0;font-size:8px;color:#7946B2} .stamp-f{position:fixed;bottom:-26px;left:0;right:0;text-align:center;font-size:7.5px;color:#6E6780;border-top:1px solid #E7E2EF;padding-top:3px}
             .cvbody{font-family:"DejaVu Sans",sans-serif;font-size:10.5px;line-height:1.45} .cvbody img{max-width:120px} .cvbody table{border-collapse:collapse;width:100%} .cvbody td,.cvbody th{padding:3px 5px;vertical-align:top}

@@ -339,6 +339,18 @@ tr.short > td:first-child { box-shadow: inset 5px 0 0 var(--green); }
 .doc-upload input[type=file] { flex: 1; min-width: 180px; padding: 5px 8px; }
 .doc-upload select { width: auto; }
 
+/* ── CV report summary, option B (20 Nov 2026): numbers first, then short sections ── */
+.brief h4 { margin: 16px 0 5px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--plum); }
+.brief p, .brief ul { margin: 0; line-height: 1.55; }
+.brief ul { padding-left: 18px; }
+.brief li { margin: 0 0 3px; }
+.brief-check li { color: #9A5B00; }
+.brief-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 0 4px; }
+.brief-tile { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: #FCFAFE; min-width: 0; }
+.brief-tile b { display: block; font-family: var(--display); font-size: 17px; color: var(--aubergine); line-height: 1.25; }
+.brief-tile span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+@media (max-width: 700px) { .brief-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
 /* ── Interviews ───────────────────────────────────────────────────────── */
 .iv-box { border-top: 1px dashed var(--line); padding-top: 10px; margin: 0 0 14px; }
 .iv-list { margin-top: 8px; }
