@@ -107,6 +107,38 @@ final class StageMover
         return $msgs;
     }
 
+    /**
+     * "Rejected by client" (Benjamin, 20 Nov 2026): recorded on the candidate, so their CV is never sent to that
+     * client again. Their other open applications with the same client close too (same stage); one already
+     * Shortlisted or further there is left for you to decide. Other clients are not affected.
+     * Returns the messages to show.
+     */
+    public function clientRejected(array $a, int $to, ?string $note, int $userId, bool $byOwner): array
+    {
+        if (!Stages::is($this->app, $to, Stages::CLIENT_REJECTED)) {
+            return [];
+        }
+        $db = $this->app->db;
+        $role = $db->one('SELECT r.id, r.title, r.client_id, cl.name AS client FROM roles r JOIN clients cl ON cl.id = r.client_id WHERE r.id = ?', [$a['role_id']]);
+        if (!$role) {
+            return [];
+        }
+        (new ClientRejections($this->app))->fromStage($a, $note, $userId);
+        $msgs = ['Recorded: ' . $role['client'] . ' turned them down. Their CV won\'t be sent to ' . $role['client'] . ' again.'];
+        $why = mb_substr('Rejected by ' . $role['client'] . ' for ' . $role['title'], 0, 255);
+        foreach ($db->all("SELECT a.*, r.title FROM applications a JOIN roles r ON r.id = a.role_id JOIN stages s ON s.id = a.stage_id
+                WHERE a.candidate_id = ? AND a.id <> ? AND r.client_id = ? AND r.is_pool = 0 AND r.status IN ('open','on_hold') AND s.kind = 'active'",
+                [$a['candidate_id'], $a['id'], $role['client_id']]) as $other) {
+            if (Shortlists::isShortlisted($this->app, (int) $other['stage_id'])) {
+                $msgs[] = 'Also on ' . $other['title'] . ': already Shortlisted or further - decide that one yourself.';
+                continue;
+            }
+            $this->move($other, $to, $why, $userId, $byOwner);
+            $msgs[] = 'Also closed on ' . $other['title'] . ': rejected by the same client.';
+        }
+        return $msgs;
+    }
+
     public function move(array $a, int $to, ?string $note, int $userId, bool $byOwner): array
     {
         $db = $this->app->db;

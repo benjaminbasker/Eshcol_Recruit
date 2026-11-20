@@ -100,6 +100,13 @@ $backApp = $backRole ? (int) (array_values(array_filter($apps, fn ($x) => (int) 
       <form method="post" action="/candidates/<?= (int) $c['id'] ?>/red-list"><?= csrf() ?><button class="btn small ghost" type="submit" data-confirm-click="Clear the red list mark and allow them to be put forward again?">Clear the mark</button></form>
     </div>
   <?php endif; ?>
+  <?php foreach ($clientRejections ?? [] as $cr): ?>
+    <div class="flash error" style="margin:14px 0 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px"><b>Rejected by <?= e($cr['client']) ?></b><?= $cr['title'] ? ' for ' . e($cr['title']) : '' ?> on <?= e(nice_date($cr['created_at'])) ?><?= $cr['source'] === 'portal' ? ' (the client\'s answer on the shortlist)' : '' ?>.<?= $cr['note'] ? ' &ldquo;' . e($cr['note']) . '&rdquo;' : '' ?>
+        <br><span class="small">Their CV won't be sent to <?= e($cr['client']) ?> again: left out of that client's positions, shortlists and database searches. Other clients are not affected.</span></div>
+      <form method="post" action="/candidates/<?= (int) $c['id'] ?>/client-rejection/lift"><?= csrf() ?><input type="hidden" name="client_id" value="<?= (int) $cr['client_id'] ?>"><button class="btn small ghost" type="submit" data-confirm-click="Lift <?= e($cr['client']) ?>'s rejection and allow their CV to be sent to them again?">Lift</button></form>
+    </div>
+  <?php endforeach; ?>
   <?php if (!empty($c['unreliable_at'])): ?>
     <div class="flash error" style="margin:14px 0 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <div style="flex:1;min-width:220px"><b>Unreliable.</b> <?= e(\Eshcol\Ats\Services\Reliability::describe($c)) ?><br><span class="small">Left out of database searches, shortlists, screening and interview invitations. If they apply again, their CV is still saved with this mark.</span></div>

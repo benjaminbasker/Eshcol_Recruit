@@ -25,6 +25,7 @@ final class ShortlistController extends Controller
                    (SELECT COUNT(*) FROM shortlist_items i WHERE i.application_id = a.id) AS sent_before
             FROM applications a JOIN stages s ON s.id = a.stage_id JOIN candidates c ON c.id = a.candidate_id
             WHERE a.role_id = ? AND s.kind = 'active' AND " . \Eshcol\Ats\Services\Contact::putForwardSql('c') . "
+              AND " . \Eshcol\Ats\Services\ClientRejections::notRejectedSql($this->app, 'c', (string) (int) $role['client_id']) . "
             ORDER BY s.sort DESC, eff_score DESC LIMIT 100", [$roleId]);
         $svc = new Shortlists($this->app);
         $remarks = $svc->autoRemarks(array_column($apps, 'id'));
@@ -262,7 +263,7 @@ final class ShortlistController extends Controller
         $ids = array_map('intval', (array) ($_POST['ids'] ?? []));
         $items = [];
         foreach ($ids as $appId) {
-            if ($this->db->col("SELECT a.id FROM applications a JOIN candidates c ON c.id = a.candidate_id WHERE a.id = ? AND a.role_id = ? AND " . \Eshcol\Ats\Services\Contact::putForwardSql('c'), [$appId, $roleId])) {
+            if ($this->db->col("SELECT a.id FROM applications a JOIN candidates c ON c.id = a.candidate_id JOIN roles r ON r.id = a.role_id WHERE a.id = ? AND a.role_id = ? AND " . \Eshcol\Ats\Services\Contact::putForwardSql('c') . " AND " . \Eshcol\Ats\Services\ClientRejections::notRejectedSql($this->app, 'c', 'r.client_id'), [$appId, $roleId])) {
                 $items[] = [$appId, (string) ($_POST['summary'][$appId] ?? '')];
             }
         }

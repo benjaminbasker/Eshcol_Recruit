@@ -239,12 +239,13 @@ final class CandidateController extends Controller
         $imp = new CandidateImporter($this->app);
         $added = 0;
         foreach (array_slice($ids, 0, 200) as $cid) {
-            if ($this->db->col('SELECT id FROM candidates WHERE id = ? AND ' . \Eshcol\Ats\Services\Contact::putForwardSql('candidates'), [$cid]) && $imp->attach($cid, $roleId, (int) Auth::user()['id'], 'database')) {
+            if ($this->db->col('SELECT id FROM candidates WHERE id = ? AND ' . \Eshcol\Ats\Services\Contact::putForwardSql('candidates')
+                . ' AND ' . \Eshcol\Ats\Services\ClientRejections::notRejectedSql($this->app, 'candidates', '(SELECT client_id FROM roles WHERE id = ' . (int) $roleId . ')'), [$cid]) && $imp->attach($cid, $roleId, (int) Auth::user()['id'], 'database')) {
                 $added++;
             }
         }
         Audit::log('bulk_added_to_role', 'role', $roleId, ['count' => $added]);
-        Http::flash('ok', "$added candidate" . ($added === 1 ? '' : 's') . ' added to the role and scored' . ($added < count($ids) ? ' (the rest were already on it, or marked do not contact)' : '') . '.');
+        Http::flash('ok', "$added candidate" . ($added === 1 ? '' : 's') . ' added to the role and scored' . ($added < count($ids) ? ' (the rest were already on it, marked do not contact, or turned down by this client before)' : '') . '.');
         Http::redirect("/roles/$roleId");
     }
 
@@ -262,8 +263,11 @@ final class CandidateController extends Controller
         $titles = array_column($this->db->all('SELECT title FROM candidate_titles WHERE candidate_id = ? ORDER BY title', [$id]), 'title');
         $notes = $this->db->all('SELECT n.*, u.name AS author FROM notes n LEFT JOIN users u ON u.id = n.user_id WHERE entity_type = \'candidate\' AND entity_id = ? ORDER BY n.id DESC', [$id]);
         $stages = $this->db->all('SELECT * FROM stages WHERE is_active = 1 ORDER BY sort');
-        $openRoles = $this->db->all("SELECT r.id, r.title, cl.name AS client FROM roles r JOIN clients cl ON cl.id = r.client_id WHERE r.status = 'open' AND r.is_pool = 0 AND r.id NOT IN (SELECT role_id FROM applications WHERE candidate_id = ?) AND " . \Eshcol\Ats\Access::roleFilter(Auth::user(), 'r.id') . " ORDER BY r.title", [$id]);
+        $openRoles = $this->db->all("SELECT r.id, r.title, cl.name AS client FROM roles r JOIN clients cl ON cl.id = r.client_id WHERE r.status = 'open' AND r.is_pool = 0 AND r.id NOT IN (SELECT role_id FROM applications WHERE candidate_id = ?) AND " . \Eshcol\Ats\Access::roleFilter(Auth::user(), 'r.id')
+            . (\Eshcol\Ats\Services\ClientRejections::ready($this->app) ? " AND NOT EXISTS (SELECT 1 FROM client_rejections cr WHERE cr.candidate_id = " . (int) $id . " AND cr.client_id = r.client_id)" : '')
+            . " ORDER BY r.title", [$id]); // not a client who turned them down (20 Nov 2026)
         $this->view('candidates/show', ['title' => $c['full_name'] ?: 'Candidate', 'c' => $c, 'files' => $files, 'apps' => $apps,
+            'clientRejections' => (new \Eshcol\Ats\Services\ClientRejections($this->app))->forCandidate($id),
             'skills' => array_column($skills, 'skill'), 'titles' => $titles, 'notes' => $notes, 'stages' => $stages,
             'screening' => $this->screening($id),
             'messages' => $this->messages($id),
@@ -432,6 +436,16 @@ final class CandidateController extends Controller
         $this->findOr404('candidates', $id);
         (new \Eshcol\Ats\Services\RedList($this->app))->clear($id, (int) Auth::user()['id']);
         Http::flash('ok', 'Cleared. They can be put forward again.');
+        Http::redirect("/candidates/$id");
+    }
+
+    /** Lifts a client's no on this candidate (e.g. the client asks to see them again). */
+    public function liftClientRejection(int $id): never
+    {
+        $this->findOr404('candidates', $id);
+        $clientId = (int) ($_POST['client_id'] ?? 0);
+        $n = (new \Eshcol\Ats\Services\ClientRejections($this->app))->lift($id, $clientId, (int) Auth::user()['id']);
+        Http::flash($n ? 'ok' : 'info', $n ? 'Lifted. Their CV can be sent to this client again.' : 'Nothing to lift.');
         Http::redirect("/candidates/$id");
     }
 
@@ -635,6 +649,10 @@ final class CandidateController extends Controller
         if ($h) {
             $this->db->run('UPDATE stage_history SET note = ? WHERE id = ?', [$reason, $h['id']]);
         }
+        // "Why rejected by client?": shown with the client's rejection on their page (20 Nov 2026).
+        if (\Eshcol\Ats\Services\ClientRejections::ready($this->app)) {
+            $this->db->run("UPDATE client_rejections SET note = ? WHERE application_id = ? AND source = 'stage'", [$reason, $appId]);
+        }
         Audit::log('stage_reason_saved', 'candidate', (int) $a['candidate_id'], ['role' => (int) $a['role_id']]);
         if (($_POST['ajax'] ?? '') === '1') {
             Http::json(['ok' => true]);
@@ -663,6 +681,10 @@ final class CandidateController extends Controller
         }
         // A hard rejection red-lists them for every position, any client (18 Nov 2026).
         foreach ($mover->redList($a, $to, $note, (int) $u['id'], $byOwner) as $msg) {
+            Http::flash('ok', $msg);
+        }
+        // The client turned them down: never sent to that client again (20 Nov 2026).
+        foreach ($mover->clientRejected($a, $to, $note, (int) $u['id'], $byOwner) as $msg) {
             Http::flash('ok', $msg);
         }
         (new \Eshcol\Ats\Services\Questionnaires($this->app))->markReviewed((int) $a['id'], (int) $a['candidate_id'], (int) $u['id']);

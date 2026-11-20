@@ -26,7 +26,8 @@ final class Matcher
         $pool = [];
         $base = 'SELECT DISTINCT c.id FROM candidates c
                  WHERE ' . Contact::putForwardSql('c') . ' AND (c.purge_after IS NULL OR c.purge_after >= CURDATE())
-                   AND c.id NOT IN (SELECT candidate_id FROM applications WHERE role_id = ?)'
+                   AND c.id NOT IN (SELECT candidate_id FROM applications WHERE role_id = ?)
+                   AND ' . ClientRejections::notRejectedSql($this->app, 'c', '(SELECT client_id FROM roles WHERE id = ' . $id . ')')
                  . ($addedSince ? ' AND c.created_at >= ?' : '');
         $args = $addedSince ? [$id, $addedSince] : [$id];
         if ($musts) {

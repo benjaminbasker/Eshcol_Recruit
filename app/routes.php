@@ -98,6 +98,7 @@ $router->post('/applications/{id}/offer', [\Eshcol\Ats\Controllers\DecisionContr
 $router->post('/applications/{id}/joining', [\Eshcol\Ats\Controllers\DecisionController::class, 'joining']);
 $router->post('/candidates/{id}/unreliable', [CandidateController::class, 'unreliable']);
 $router->post('/candidates/{id}/red-list', [CandidateController::class, 'redList']);
+$router->post('/candidates/{id}/client-rejection/lift', [CandidateController::class, 'liftClientRejection']);
 $router->post('/candidates/{id}/roles', [CandidateController::class, 'addToRole']);
 $router->post('/candidates/{id}/ai', [AiController::class, 'analyse']);
 $router->post('/candidates/{id}/delete', [CandidateController::class, 'destroy']);

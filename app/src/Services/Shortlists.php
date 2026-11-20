@@ -665,6 +665,8 @@ final class Shortlists
             $d = isset(self::DECISIONS[$d]) ? $d : null;
             if ($d !== $it['decision'] || $comment !== (string) $it['comment']) {
                 $db->run('UPDATE shortlist_items SET decision = ?, comment = ?, decided_at = NOW() WHERE id = ?', [$d, $comment !== '' ? $comment : null, $it['id']]);
+                // "Not suitable" from the client is recorded on the candidate: never sent to this client again (20 Nov 2026).
+                (new ClientRejections($this->app))->fromPortal((int) $it['id'], $d, $comment);
                 $changes[] = ['name' => $it['p']['name'] ?? 'Candidate', 'decision' => $d, 'comment' => $comment, 'candidate_id' => (int) $it['candidate_id']];
             }
             $marked += $d ? 1 : 0;

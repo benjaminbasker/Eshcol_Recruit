@@ -25,6 +25,8 @@ final class Stages
     public const AWAITING = 'awaiting_reply';
     // Update 072 (the red list, 18 Nov 2026): a hard rejection, not tied to one role.
     public const REJECTED = 'rejected';
+    // Update 074 (20 Nov 2026): the client turned them down; never sent to that client again.
+    public const CLIENT_REJECTED = 'client_rejected';
 
     /** Codes every install must have: the app's rules (offer approval, joining, shortlists, reports) depend on them. */
     public const REQUIRED = [self::SHORTLISTED, self::SUBMITTED, self::INTERVIEW, self::OFFER, self::JOINED, self::NOT_SUITABLE, self::WITHDREW, self::FUTURE];

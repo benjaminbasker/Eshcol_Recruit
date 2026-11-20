@@ -33,7 +33,7 @@ final class FunctionRouting
         'outside_band' => 'Outside the experience range', 'experience_unknown' => 'Experience not known', 'not_categorised' => 'Not categorised yet',
         'blocked' => 'Do not contact, or marked unreliable', 'no_cv_text' => 'No readable CV yet',
         'band_elsewhere' => "Fits another position's band instead", 'no_routing' => "Position doesn't take routed CVs",
-        'not_qualified' => 'Not a B.Com',
+        'not_qualified' => 'Not a B.Com', 'client_rejected' => 'Turned down by this client before',
     ];
 
     /**
@@ -79,6 +79,17 @@ final class FunctionRouting
         };
     }
 
+    /** The client's name when this candidate was turned down by the client of this position, else null. */
+    private function rejectedBy(int $candidateId, int $roleId): ?string
+    {
+        if (!ClientRejections::ready($this->app)) {
+            return null;
+        }
+        $name = $this->app->db->col('SELECT cl.name FROM roles r JOIN client_rejections cr ON cr.client_id = r.client_id JOIN clients cl ON cl.id = r.client_id
+            WHERE r.id = ? AND cr.candidate_id = ? LIMIT 1', [$roleId, $candidateId]);
+        return $name !== false && $name !== null ? (string) $name : null;
+    }
+
     public static function scopeOf(array $role): string
     {
         $s = (string) ($role['location_scope'] ?? '');
@@ -96,6 +107,10 @@ final class FunctionRouting
      */
     public function decide(array $cand, ?array $cat, array $role): array
     {
+        // The client turned them down before (20 Nov 2026): never sent to that client again, on any position.
+        if (!empty($cand['id']) && !empty($role['id']) && ($by = $this->rejectedBy((int) $cand['id'], (int) $role['id'])) !== null) {
+            return ['client_rejected', "turned down by $by before; not sent to them again"];
+        }
         if (!$cat) {
             return ['not_categorised', 'not categorised yet'];
         }
@@ -363,7 +378,7 @@ final class FunctionRouting
             $settled = $settled || $res === 'pipeline';
             // Benjamin, 17 Nov 2026: another city on a local-only position, or not a B.Com where B.Com is needed, is
             // Not suitable straight away (no longer parked as Future requirement). Still filed in their pool below.
-            if (in_array($res, ['other_city', 'not_qualified'], true) && $notSuitable && (int) $a['stage_id'] === $first) {
+            if (in_array($res, ['other_city', 'not_qualified', 'client_rejected'], true) && $notSuitable && (int) $a['stage_id'] === $first) {
                 $reason = ucfirst($why) . '.';
                 $db->update('applications', ['stage_id' => $notSuitable, 'stage_reason' => mb_substr($reason, 0, 255), 'stage_reason_at' => date('Y-m-d H:i:s'), 'fit_note' => mb_substr("Screened out: $why", 0, 255)], (int) $a['id']);
                 $db->insert('stage_history', ['application_id' => $a['id'], 'from_stage_id' => $first, 'to_stage_id' => $notSuitable, 'user_id' => null, 'note' => mb_substr("Screened out automatically: $why", 0, 255)]);
