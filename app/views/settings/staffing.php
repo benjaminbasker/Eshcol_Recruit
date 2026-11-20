@@ -49,11 +49,15 @@ $open = count(array_filter($rates, fn ($r) => $r['confirmed_at'] === null));
 
     <h3 style="margin-top:14px">Basic rates</h3>
     <div class="table-wrap"><table class="list compact">
-      <thead><tr><th>Class of employee</th><th>Zone</th><th>Basic per month</th><th>From</th><th>Source</th><th>Confirmed</th></tr></thead>
-      <tbody><?php $lastKind = null; foreach ($wages as $w): if ($w['work_kind'] !== $lastKind): $lastKind = $w['work_kind']; ?>
-        <tr><td colspan="6" class="small"><b><?= e(Staffing::WORK_KINDS[$w['work_kind']] ?? $w['work_kind']) ?></b></td></tr><?php endif; ?>
+      <thead><tr><th>Class of employee</th><th>Zone</th><th>Basic per month</th><th>Minimum wage (Basic + DA)</th><th>From</th><th>Source</th><th>Confirmed</th></tr></thead>
+      <tbody><?php $lastKind = null; $daNow = []; $stSvcW = new Staffing(\Eshcol\Ats\App::get());
+        foreach ($wages as $w): if ($w['work_kind'] !== $lastKind): $lastKind = $w['work_kind']; ?>
+        <tr><td colspan="7" class="small"><b><?= e(Staffing::WORK_KINDS[$w['work_kind']] ?? $w['work_kind']) ?></b></td></tr><?php endif;
+          // The total an offer must reach (20 Nov 2026): this basic plus the DA in force today for the same work (as minWage() adds them).
+          $daW = $daNow[$w['work_kind']] ??= $stSvcW->da((string) $w['work_kind']); ?>
         <tr><td><?= e(Staffing::SKILLS[$w['skill_level']] ?? $w['skill_level']) ?></td><td><?= e($w['zone'] ?: 'All') ?></td>
           <td>₹<?= e(number_format((float) $w['monthly'], 2)) ?><?= $w['daily'] !== null ? ' <span class="small muted">(₹' . e(number_format((float) $w['daily'], 2)) . ' a day × 30)</span>' : '' ?></td>
+          <td><?= $daW ? '<b>₹' . e(number_format((float) $w['monthly'] + (float) $daW['monthly'], 2)) . '</b><br><span class="small muted">+ DA ₹' . e(number_format((float) $daW['monthly'], 2)) . ' from ' . e(nice_date($daW['effective_from'])) . '</span>' : '<span class="small muted">No confirmed DA yet</span>' ?></td>
           <td class="nowrap small"><?= e(nice_date($w['effective_from'])) ?></td><td class="small"><?= e((string) $w['note']) ?></td>
           <td class="small"><?= $w['confirmed_at'] ? '<span class="chip yes" style="text-decoration:none">✓ ' . e($w['confirmer'] ?? '') . '</span>' : '<label><input type="checkbox" name="mw[]" value="' . (int) $w['id'] . '"> Confirm</label>' ?></td></tr>
       <?php endforeach; ?></tbody>

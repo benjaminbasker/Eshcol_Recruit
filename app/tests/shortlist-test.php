@@ -121,6 +121,7 @@ $text = (new \Smalot\PdfParser\Parser())->parseContent($pdf)->getText();
 $check('a real PDF, one page per candidate', str_starts_with($pdf, '%PDF') && substr_count($pdf, '/Type /Page') - substr_count($pdf, '/Type /Pages') === 2);
 $check('it has the names, your view and the salary (₹ figures readable)', str_contains($text, 'Anand Shortlist') && str_contains($text, 'Strong on GST') && str_contains($text, '5.5 LPA'));
 $check('with their email and phone', str_contains($text, '@candidates.test') && str_contains($text, 'Phone'));
+$check('set in Inter (20 Nov 2026), regular and bold', (bool) preg_match('#/BaseFont\s*/\w+\+Inter-Regular#', $pdf) && (bool) preg_match('#/BaseFont\s*/\w+\+Inter-Bold#', $pdf));
 
 echo "\nThe client replies\n";
 $items = $svc->items($id);
@@ -150,6 +151,7 @@ $sl = $db->one('SELECT s.*, r.title, r.code FROM shortlists s JOIN roles r ON r.
 $cover = $svc->coverPdf($sl, $item);
 $ctext = (new \Smalot\PdfParser\Parser())->parseContent($cover)->getText();
 $check('cover page: reference, remarks, CTC in rupees, your contact', str_contains($ctext, ref_candidate($c3)) && str_contains($ctext, 'Recently moved to Pune') && str_contains($ctext, '3,24,000') && str_contains($ctext, 'YOUR CONTACT AT ESHCOL GLOBAL'));
+$check('the cover page is set in Inter, with the ₹ sign in it (not a missing-glyph box)', (bool) preg_match('#/BaseFont\s*/\w+\+Inter-Regular#', $cover) && str_contains($ctext, '₹'));
 $built = $svc->brandedFromContent($sl, $item, '<h1>Chitra</h1><p>Accounts executive</p><script>alert(1)</script>');
 $btext = (new \Smalot\PdfParser\Parser())->parseContent($built)->getText();
 $check('a Word CV becomes cover + CV, with our reference line on its pages', str_contains($btext, 'Accounts executive') && str_contains($btext, 'Ref ' . ref_candidate($c3)) && !str_contains($btext, 'alert'));

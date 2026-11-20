@@ -149,7 +149,7 @@ $pages = [
     ['/placements', 200, ''], ['/reports', 200, ''], ['/account', 200, ''],
     ["/roles/$staffRole", 200, 'Staffing: on Eshcol'], ["/roles/$ownRole", 200, 'Our own team'], ['/roles?type=inhouse', 200, "Smoke Recruiter ZZ$tag"],
     ['/roles?type=staffing', 200, "Smoke Operator ZZ$tag"], ['/roles/new?type=staffing', 200, 'Who is this for?'], ["/roles/$ownRole/edit", 200, 'Hiring manager'],
-    ['/joinings', 200, 'Joinings'], ['/joinings?show=all', 200, ''], ['/settings/staffing', 200, 'Statutory rates'], ["/clients/$client", 200, 'Staffing terms'],
+    ['/joinings', 200, 'Joinings'], ['/joinings?show=all', 200, ''], ['/settings/staffing', 200, 'Statutory rates'], ['/settings/staffing', 200, 'Minimum wage (Basic + DA)'], ["/clients/$client", 200, 'Staffing terms'],
     ['/settings', 200, ''], ['/settings/new-words', 200, ''], ['/settings/ai-reading', 200, ''], ['/settings/reader-test', 200, ''], ['/settings/categories', 200, ''],
 ];
 
