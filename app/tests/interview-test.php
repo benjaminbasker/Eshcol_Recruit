@@ -302,10 +302,28 @@ $svc->outcome($eIv, 'next_round', 'Strong', $uid);
 $check('through round 1: next is round 2, and ready for round 2', $svc->nextRound($e1a) === 2 && in_array($e1a, array_column($svc->readyFor($role, 2), 'application_id'), true)
     && !in_array($e2a, array_column($svc->readyFor($role, 2), 'application_id'), true));
 \Eshcol\Ats\Services\KeyFacts::forgetStages();
-$check('every status tag says the round: "Client interview · Round 1"', str_contains(stage_tags($e1), 'Client interview · Round 1'));
+$check('every status tag says the round: through round 1 reads "Client interview · Round 2"', str_contains(stage_tags($e1), 'Client interview · Round 2'));
 $svc->book($e1a, 2, 'in_person', date('Y-m-d\T15:00', strtotime('+11 days')), 45, [], $uid);
 \Eshcol\Ats\Services\KeyFacts::forgetStages();
-$check('…and "Round 2" once round 2 is booked', str_contains(stage_tags($e1), 'Client interview · Round 2'));
+$check('…and still "Round 2" once round 2 is booked', str_contains(stage_tags($e1), 'Client interview · Round 2'));
+
+echo "\n\"Client interview · Round 2\" in the stage drop-down (20 Nov 2026)\n";
+[$okF, , $fIv] = $svc->book($e2a, 1, 'virtual', date('Y-m-d\T12:00', strtotime('+10 days')), 30, [], $uid);
+[$okM, $msgM, $bookM] = $svc->moveToRound($e2a, 2, $uid, true);
+$check('round 1 still booked: it is recorded "Through to the next round", and with no round 2 times the booking form is asked for: "' . $msgM . '"',
+    $okF && $okM && $bookM && $db->col('SELECT outcome FROM interviews WHERE id = ?', [$fIv]) === 'next_round' && $svc->nextRound($e2a) === 2);
+\Eshcol\Ats\Services\KeyFacts::forgetStages();
+$check('…the tag says Round 2 straight away', str_contains(stage_tags($e2), 'Client interview · Round 2'));
+$svc->addSlots($role, 2, 'in_person', [date('Y-m-d 15:00', strtotime('+12 days'))], 45, 'client');
+[$g, $ga] = $person('Gauri Roundtest');
+[, , $gIv] = $svc->book($ga, 1, 'virtual', date('Y-m-d\T09:30', strtotime('+10 days')), 30, [], $uid);
+[$okG, $msgG, $bookG] = $svc->moveToRound($ga, 2, $uid, true);
+$check('with round 2 times from the client, one pick invites them to choose: "' . $msgG . '"', $okG && !$bookG
+    && (bool) $db->col("SELECT 1 FROM interviews WHERE application_id = ? AND round = 2 AND status = 'choosing'", [$ga]));
+$opts = stage_options($db->all('SELECT * FROM stages WHERE is_active = 1 ORDER BY sort'), (int) \Eshcol\Ats\Services\Stages::id($app, \Eshcol\Ats\Services\Stages::INTERVIEW), 2);
+$sidIv = (int) \Eshcol\Ats\Services\Stages::id($app, \Eshcol\Ats\Services\Stages::INTERVIEW);
+$check('the drop-down offers Client interview · Round 1, 2 and 3, with Round 2 selected', str_contains($opts, '>Client interview · Round 1<') && str_contains($opts, 'value="' . $sidIv . ':3"')
+    && str_contains($opts, 'value="' . $sidIv . ':2" selected'));
 $check('the round on the tags only shows at Client interview', \Eshcol\Ats\Services\KeyFacts::stageName($app, 'Shortlisted', (int) \Eshcol\Ats\Services\Stages::id($app, \Eshcol\Ats\Services\Stages::SHORTLISTED), 2) === 'Shortlisted');
 $db->run('DELETE FROM shortlist_items WHERE shortlist_id = ?', [$sl]);
 $db->run('DELETE FROM shortlists WHERE id = ?', [$sl]);

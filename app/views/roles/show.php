@@ -114,7 +114,7 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
       <td style="width:210px">
         <form method="post" action="/applications/<?= $a['id'] ?>/stage"><?= csrf() ?><input type="hidden" name="back" value="<?= e($_SERVER['REQUEST_URI'] ?? '') ?>">
           <select name="stage_id" data-autosubmit aria-label="Stage">
-            <?php foreach ($stages as $s): ?><option value="<?= $s['id'] ?>"<?= selected($a['stage_id'], $s['id']) ?><?= in_array($s['kind'], ['fail', 'hold'], true) ? ' data-closing="1"' . ($s['kind'] === 'hold' ? ' data-hold="1"' : '') : '' ?>><?= e($s['name']) ?></option><?php endforeach; ?>
+            <?= stage_options($stages, (int) $a['stage_id'], isset($a['iv_round']) ? (int) $a['iv_round'] : null) ?>
           </select>
           <noscript><button class="btn small">Move</button></noscript>
         </form>

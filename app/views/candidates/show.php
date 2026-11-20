@@ -455,7 +455,7 @@ if ($hasMsgs):
         <form method="post" action="/applications/<?= $a['id'] ?>/stage" class="row" style="margin:12px 0;align-items:center"><?= csrf() ?><input type="hidden" name="back" value="<?= e($_SERVER['REQUEST_URI'] ?? '') ?>">
           <label for="st<?= $a['id'] ?>" style="margin:0">Stage</label>
           <select id="st<?= $a['id'] ?>" name="stage_id" data-autosubmit style="max-width:240px">
-            <?php foreach ($stages as $s): ?><option value="<?= $s['id'] ?>"<?= selected($a['stage_id'], $s['id']) ?><?= in_array($s['kind'], ['fail', 'hold'], true) ? ' data-closing="1"' . ($s['kind'] === 'hold' ? ' data-hold="1"' : '') : '' ?>><?= e($s['name']) ?></option><?php endforeach; ?>
+            <?= stage_options($stages, (int) $a['stage_id'], isset($a['iv_round']) ? (int) $a['iv_round'] : null) ?>
           </select><noscript><button class="btn small">Move</button></noscript>
         </form>
         <?php if (array_key_exists('permission', $a) && !($a['is_pool'] ?? false)): $perm = $a['permission']; ?>

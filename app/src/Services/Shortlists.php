@@ -568,11 +568,16 @@ final class Shortlists
 
     private function renderPdf(string $bodyHtml, string $extraCss): string
     {
-        $css = 'body{font-family:"DejaVu Sans",sans-serif;font-size:10.5px;color:#2A2238;margin:0}
+        // Inter on the cover page and stamps (Benjamin, 20 Nov 2026); the CV pages keep DejaVu, which has the bullets
+        // and symbols CVs use. Inter's files live in templates/fonts; the PDF library keeps its metrics in storage.
+        $fonts = str_replace('\\', '/', $this->app->root . '/templates/fonts');
+        $css = '@font-face{font-family:"Inter";font-weight:normal;font-style:normal;src:url("' . $fonts . '/Inter-Regular.ttf") format("truetype")}
+            @font-face{font-family:"Inter";font-weight:bold;font-style:normal;src:url("' . $fonts . '/Inter-Bold.ttf") format("truetype")}
+            body{font-family:"Inter","DejaVu Sans",sans-serif;font-size:10.5px;color:#2A2238;margin:0}
             @page{margin:30px 36px 40px}
             .cover{page-break-after:always}
             .head{width:100%;border-bottom:3px solid #D8B36A;margin-bottom:18px} .head .r{text-align:right;font-size:9px;letter-spacing:1px;color:#573A73}
-            h1{font-family:"DejaVu Serif",serif;font-weight:normal;color:#320A67;font-size:24px;margin:6px 0 2px} .sub{color:#7946B2;margin:0 0 14px;font-size:12px}
+            h1{font-family:"Inter","DejaVu Sans",sans-serif;font-weight:bold;color:#320A67;font-size:23px;margin:6px 0 2px} .sub{color:#7946B2;margin:0 0 14px;font-size:12px}
             .facts{width:100%;border-collapse:collapse;margin-bottom:12px} .facts td{padding:6px 7px;border-bottom:1px solid #E7E2EF;vertical-align:top} .facts .k{color:#6E6780;width:36%}
             .remarks{background:#FBF5E8;border-left:3px solid #D8B36A;padding:9px 11px;margin:6px 0 12px;font-size:11px}
             .contact{background:#F1EBF9;border-left:3px solid #7946B2;padding:9px 11px;margin-top:16px;font-size:11px;line-height:1.5}
@@ -588,8 +593,12 @@ final class Shortlists
             .stamp-h{position:fixed;top:-20px;right:0;font-size:8px;color:#7946B2} .stamp-f{position:fixed;bottom:-26px;left:0;right:0;text-align:center;font-size:7.5px;color:#6E6780;border-top:1px solid #E7E2EF;padding-top:3px}
             .cvbody{font-family:"DejaVu Sans",sans-serif;font-size:10.5px;line-height:1.45} .cvbody img{max-width:120px} .cvbody table{border-collapse:collapse;width:100%} .cvbody td,.cvbody th{padding:3px 5px;vertical-align:top}
             .cvbody h1,.cvbody h2,.cvbody h3{font-family:"DejaVu Serif",serif;color:#320A67;font-weight:normal;margin:10px 0 4px} .cvbody h1{font-size:17px} .cvbody h2{font-size:14px} .cvbody h3{font-size:12px} .cvbody p{margin:0 0 6px}' . $extraCss;
+        $fontCache = $this->app->storage('pdf-fonts');
+        if (!is_dir($fontCache)) {
+            @mkdir($fontCache, 0750, true);
+        }
         $d = new \Dompdf\Dompdf(['isRemoteEnabled' => false, 'defaultFont' => 'DejaVu Sans', 'isPhpEnabled' => false, 'isJavascriptEnabled' => false,
-            'chroot' => $this->app->root . '/templates', 'tempDir' => $this->app->storage('uploads-tmp')]);
+            'chroot' => $this->app->root . '/templates', 'tempDir' => $this->app->storage('uploads-tmp'), 'fontDir' => $fontCache, 'fontCache' => $fontCache]);
         $d->loadHtml('<!DOCTYPE html><html><head><meta charset="utf-8"><style>' . $css . '</style></head><body>' . $bodyHtml . '</body></html>', 'UTF-8');
         $d->setPaper('A4');
         $d->render();

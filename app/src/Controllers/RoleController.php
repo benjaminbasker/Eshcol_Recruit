@@ -109,7 +109,7 @@ final class RoleController extends Controller
             SELECT a.*, COALESCE(a.override_score, a.score) AS eff_score, s.name AS stage, s.kind AS stage_kind,
                    c.full_name, c.location, c.exp_months, c.exp_as_of, c.notice_days, c.ctc_expected_lpa, c.ctc_min_lpa, c.field_sources, c.do_not_contact, c.unreliable_at, c.unreliable_reason, c.unreliable_note, c.red_listed_at, c.channel, c.source, c.email,
                    (SELECT text_status FROM cv_files f WHERE f.candidate_id = c.id ORDER BY f.id DESC LIMIT 1) AS text_status,
-                   (SELECT MAX(v.round) FROM interviews v WHERE v.application_id = a.id AND v.status IN (\'choosing\',\'booked\',\'done\')) AS iv_round
+                   ' . \Eshcol\Ats\Services\KeyFacts::ROUND_SQL . ' AS iv_round
             FROM applications a
             JOIN candidates c ON c.id = a.candidate_id
             JOIN stages s ON s.id = a.stage_id

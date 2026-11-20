@@ -254,7 +254,8 @@ final class CandidateController extends Controller
         Audit::log('candidate_viewed', 'candidate', $id);
         $files = $this->db->all('SELECT id, original_name, ext, size_bytes, text, text_status, text_source, created_at FROM cv_files WHERE candidate_id = ? ORDER BY id DESC', [$id]);
         $apps = $this->db->all('
-            SELECT a.*, COALESCE(a.override_score, a.score) AS eff_score, r.title, r.code, r.engagement, r.is_pool, r.score_threshold, cl.name AS client, s.name AS stage, s.kind AS stage_kind, r.ctc_max_lpa AS role_ctc_max, r.notice_max_days AS role_notice_max, r.location AS role_location, r.work_mode AS role_work_mode, r.status AS role_status
+            SELECT a.*, COALESCE(a.override_score, a.score) AS eff_score, r.title, r.code, r.engagement, r.is_pool, r.score_threshold, cl.name AS client, s.name AS stage, s.kind AS stage_kind, r.ctc_max_lpa AS role_ctc_max, r.notice_max_days AS role_notice_max, r.location AS role_location, r.work_mode AS role_work_mode, r.status AS role_status,
+                   ' . \Eshcol\Ats\Services\KeyFacts::ROUND_SQL . ' AS iv_round
             FROM applications a JOIN roles r ON r.id = a.role_id JOIN clients cl ON cl.id = r.client_id JOIN stages s ON s.id = a.stage_id
             WHERE a.candidate_id = ? AND ' . \Eshcol\Ats\Access::roleFilter(Auth::user(), 'a.role_id') . ' ORDER BY a.applied_at DESC', [$id]);
         $skills = $this->db->all('SELECT skill FROM candidate_skills WHERE candidate_id = ? ORDER BY skill', [$id]);
@@ -760,6 +761,17 @@ final class CandidateController extends Controller
     public function stage(int $appId): never
     {
         $a = $this->findOr404('applications', $appId);
+        // "Client interview · Round 2" (posted as "stage:round", 20 Nov 2026): close the earlier round as passed and
+        // invite them to choose a round 2 time, or open the booking form when the client hasn't given times yet.
+        if (preg_match('/^(\d+):(\d)$/', (string) ($_POST['stage_id'] ?? ''), $m) && \Eshcol\Ats\Services\Stages::is($this->app, (int) $m[1], \Eshcol\Ats\Services\Stages::INTERVIEW)) {
+            $u = Auth::user();
+            [$ok, $msg, $book] = (new \Eshcol\Ats\Services\Interviews($this->app))->moveToRound($appId, (int) $m[2], (int) $u['id'], ($u['role'] ?? '') === 'owner');
+            if (($_POST['ajax'] ?? '') === '1') {
+                Http::json(['ok' => $ok, 'message' => $msg]);
+            }
+            Http::flash($ok ? 'ok' : 'error', $msg);
+            Http::redirect($book ? '/candidates/' . (int) $a['candidate_id'] . '?round=' . (int) $m[2] . '&app=' . $appId . '#interviews' : self::backToRow((string) ($_POST['back'] ?? ''), $appId, '/roles/' . (int) $a['role_id']));
+        }
         $to = (int) ($_POST['stage_id'] ?? 0);
         if (!$this->db->col('SELECT id FROM stages WHERE id = ?', [$to])) {
             Http::abort(422, 'Unknown stage.');

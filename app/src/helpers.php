@@ -45,6 +45,29 @@ function stage_tags(int|string|null $candidateId, ?int $roleId = null): string
     return \Eshcol\Ats\Services\KeyFacts::stageTags(\Eshcol\Ats\App::get(), (int) $candidateId, $roleId);
 }
 
+/**
+ * The stage drop-down's options (20 Nov 2026): "Client interview" is offered as Round 1, 2 and 3, so a candidate is moved
+ * to the next round in one pick. A round is posted as "stage:round" (e.g. "5:2"); every other stage as its id.
+ */
+function stage_options(array $stages, int $currentStageId, ?int $round): string
+{
+    $app = \Eshcol\Ats\App::get();
+    $out = '';
+    foreach ($stages as $s) {
+        $id = (int) $s['id'];
+        $closing = in_array($s['kind'], ['fail', 'hold'], true) ? ' data-closing="1"' . ($s['kind'] === 'hold' ? ' data-hold="1"' : '') : '';
+        if (\Eshcol\Ats\Services\Stages::is($app, $id, \Eshcol\Ats\Services\Stages::INTERVIEW)) {
+            $at = $currentStageId === $id ? max(1, min(3, (int) $round)) : 0;
+            for ($r = 1; $r <= 3; $r++) {
+                $out .= '<option value="' . ($r === 1 ? $id : "$id:$r") . '"' . ($at === $r ? ' selected' : '') . '>' . e($s['name'] . ' · Round ' . $r) . '</option>';
+            }
+            continue;
+        }
+        $out .= '<option value="' . $id . '"' . ($currentStageId === $id ? ' selected' : '') . $closing . '>' . e($s['name']) . '</option>';
+    }
+    return $out;
+}
+
 function prime_stages(array $candidateIds): void
 {
     \Eshcol\Ats\Services\KeyFacts::primeStages(\Eshcol\Ats\App::get(), $candidateIds);

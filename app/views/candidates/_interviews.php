@@ -6,6 +6,9 @@ $kinds = \Eshcol\Ats\Services\Interviews::KINDS;
 $outcomes = \Eshcol\Ats\Services\Interviews::OUTCOMES;
 $list = $db->all("SELECT * FROM interviews WHERE application_id = ? AND status <> 'cancelled' ORDER BY round, id", [$a['id']]);
 $next = $ivSvc->nextRound((int) $a['id']);
+// Picked "Client interview · Round N" in the stage drop-down with no times from the client yet: the form opens at N.
+$wantRound = (int) ($_GET['app'] ?? 0) === (int) $a['id'] ? (int) ($_GET['round'] ?? 0) : 0;
+$next = $wantRound > $next && $wantRound <= 3 ? $wantRound : $next;
 $open = count($ivSvc->openSlots((int) $a['role_id'], $next));
 $client = $db->one('SELECT cl.* FROM roles r JOIN clients cl ON cl.id = r.client_id WHERE r.id = ?', [$a['role_id']]);
 $defaultKind = $next === 1 ? 'virtual' : 'in_person';
@@ -96,7 +99,7 @@ $whereFields = function (array $v) use ($client): string {
           <span class="small muted">No round <?= $next ?> times from the client yet. <a href="/roles/<?= (int) $a['role_id'] ?>#interviews">Add them on the position</a>, or book a time below.</span>
         <?php endif; ?>
       </div>
-      <details class="small" style="margin-top:6px"><summary><b>Book round <?= $next ?> directly</b> (a time agreed on the phone)</summary>
+      <details class="small" style="margin-top:6px"<?= $wantRound ? ' open' : '' ?>><summary><b>Book round <?= $next ?> directly</b> (a time agreed on the phone)</summary>
         <form method="post" action="/applications/<?= (int) $a['id'] ?>/interview/book" class="book-form"><?= csrf() ?><input type="hidden" name="back" value="<?= e($back) ?>">
           <div class="row" style="align-items:flex-end">
             <div class="field" style="flex:0 1 80px"><label>Round</label><select name="round"><?php for ($r = 1; $r <= 3; $r++): ?><option value="<?= $r ?>"<?= $r === min(3, $next) ? ' selected' : '' ?>><?= $r ?></option><?php endfor; ?></select></div>

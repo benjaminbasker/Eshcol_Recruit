@@ -118,7 +118,7 @@ final class KeyFacts
         }
         $in = implode(',', $ids);
         foreach ($app->db->all("SELECT a.candidate_id, r.id AS role_id, r.title, s.id AS stage_id, s.name AS stage, s.kind AS stage_kind,
-                (SELECT MAX(v.round) FROM interviews v WHERE v.application_id = a.id AND v.status IN ('choosing','booked','done')) AS iv_round
+                " . self::ROUND_SQL . " AS iv_round
                 FROM applications a JOIN roles r ON r.id = a.role_id
                 JOIN stages s ON s.id = a.stage_id WHERE a.candidate_id IN ($in) AND r.is_pool = 0 AND r.status IN ('open','on_hold')
                 AND " . \Eshcol\Ats\Access::roleFilter(\Eshcol\Ats\Auth::user(), 'r.id') . ' ORDER BY s.sort DESC, r.title') as $ap) {
@@ -131,6 +131,13 @@ final class KeyFacts
      * The stage as shown, with the interview round when they are at Client interview (20 Nov 2026): "Client interview ·
      * Round 2", so every list says which round. $round: the latest round invited to, booked or held.
      */
+    /**
+     * The interview round an application (alias "a") is at: the latest round invited to, booked or held, plus one once
+     * that round ended "Through to the next round" (20 Nov 2026: moved to round 2 straight from the stage drop-down).
+     */
+    public const ROUND_SQL = "(SELECT v.round + (v.status = 'done' AND v.outcome = 'next_round') FROM interviews v
+        WHERE v.application_id = a.id AND v.status IN ('choosing','booked','done') ORDER BY v.round DESC, v.id DESC LIMIT 1)";
+
     public static function stageName(\Eshcol\Ats\App $app, string $name, int $stageId, ?int $round): string
     {
         return $round && Stages::is($app, $stageId, Stages::INTERVIEW) ? $name . ' · Round ' . $round : $name;

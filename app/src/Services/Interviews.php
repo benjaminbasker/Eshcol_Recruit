@@ -196,6 +196,43 @@ final class Interviews
         return 1 + (int) $this->app->db->col("SELECT COALESCE(MAX(round), 0) FROM interviews WHERE application_id = ? AND status = 'done'", [$applicationId]);
     }
 
+    /**
+     * "Client interview · Round N" picked in the stage drop-down (Benjamin, 20 Nov 2026: "make moving to round 2 easy").
+     * Earlier rounds still booked are recorded "Through to the next round"; an unanswered invitation to an earlier round
+     * is withdrawn; the stage becomes Client interview. Then, if the client has given times for round N, the candidate is
+     * invited to choose one. Returns [ok, message, book]: book = true when a time still needs booking (no times yet).
+     */
+    public function moveToRound(int $applicationId, int $round, int $userId, bool $byOwner = false): array
+    {
+        $db = $this->app->db;
+        $round = max(1, min(9, $round));
+        $a = $this->application($applicationId);
+        if (!$a) {
+            return [false, 'Application not found.', false];
+        }
+        foreach ($db->all("SELECT * FROM interviews WHERE application_id = ? AND round < ? AND status IN ('booked','choosing')", [$applicationId, $round]) as $iv) {
+            if ($iv['status'] === 'booked') {
+                $this->outcome((int) $iv['id'], 'next_round', '', $userId, $byOwner);
+            } else {
+                $this->cancel((int) $iv['id'], $userId);
+            }
+        }
+        $sid = Stages::id($this->app, Stages::INTERVIEW);
+        $cur = $db->one('SELECT * FROM applications WHERE id = ?', [$applicationId]);
+        if ($sid && (int) $cur['stage_id'] !== $sid) {
+            (new StageMover($this->app))->move($cur, $sid, "Round $round", $userId, $byOwner);
+        }
+        if ($db->col("SELECT 1 FROM interviews WHERE application_id = ? AND round = ? AND status IN ('choosing','booked')", [$applicationId, $round])) {
+            return [true, "{$a['full_name']} is at round $round; that round is already arranged.", false];
+        }
+        if ($this->openSlots((int) $a['role_id'], $round) && $a['email'] && !Contact::silenced($a) && !$a['unreliable_at']) {
+            [$ok, $msg] = $this->invite($applicationId, $round, $userId);
+            return [$ok, "Moved to round $round. " . $msg, !$ok];
+        }
+        Audit::log('interview_round', 'candidate', (int) $a['candidate_id'], ['round' => $round]);
+        return [true, "Moved to round $round. There are no round $round times from the client yet: book a time below, or add the client's times on the position.", true];
+    }
+
     /** The booked (not yet held) interview for this application's round, if any. */
     public function bookedFor(int $applicationId, int $round): ?array
     {
