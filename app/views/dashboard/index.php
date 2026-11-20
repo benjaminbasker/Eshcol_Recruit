@@ -26,10 +26,10 @@ $kindIcon = ['virtual' => 'video', 'in_person' => 'pin', 'phone' => 'phone'];
     </div>
   </div>
   <div class="db-kpis">
-    <a class="db-kpi" href="/roles"><span class="ic" style="background:#EFE8F8"><?= icon('briefcase') ?></span><span><b><?= (int) $stats['open_roles'] ?></b>Open positions</span></a>
-    <div class="db-kpi"><span class="ic" style="background:#FBF0D9"><?= icon('users') ?></span><span><b><?= number_format((int) $stats['in_play']) ?></b>Candidates in progress</span></div>
-    <a class="db-kpi" href="/candidates"><span class="ic" style="background:#E6EEF9"><?= icon('inbox') ?></span><span><b><?= number_format((int) $stats['candidates']) ?></b>In your database<em>+<?= (int) $stats['new_week'] ?> this week</em></span></a>
-    <div class="db-kpi"><span class="ic" style="background:#E3F2E6"><?= icon('calendar') ?></span><span><b><?= (int) ($interviewsWeek ?? 0) ?></b>Interviews this week</span></div>
+    <a class="db-kpi" href="/roles"><span class="ic m1"><?= icon('briefcase') ?></span><span><b><?= (int) $stats['open_roles'] ?></b>Open positions</span></a>
+    <div class="db-kpi"><span class="ic m3"><?= icon('users') ?></span><span><b><?= number_format((int) $stats['in_play']) ?></b>Candidates in progress</span></div>
+    <a class="db-kpi" href="/candidates"><span class="ic m2"><?= icon('inbox') ?></span><span><b><?= number_format((int) $stats['candidates']) ?></b>In your database<em>+<?= (int) $stats['new_week'] ?> this week</em></span></a>
+    <div class="db-kpi"><span class="ic m5"><?= icon('calendar') ?></span><span><b><?= (int) ($interviewsWeek ?? 0) ?></b>Interviews this week</span></div>
   </div>
 </section>
 

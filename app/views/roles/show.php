@@ -140,7 +140,7 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
     <?php $contractor = \Eshcol\Ats\Access::restricted($user ?? \Eshcol\Ats\Auth::user()); ?>
     <p class="eyebrow"><a href="/roles">Roles</a> › <?= ($role['client_id'] ?? null) && !$contractor ? '<a href="/clients/' . (int) $role['client_id'] . '">' . e(\Eshcol\Ats\Services\Engagement::clientLabel(['name' => $role['client'], 'is_self' => $role['is_self'] ?? 0])) . '</a>' : e($role['client']) ?> · <?= e($role['code']) ?><?php $engT = \Eshcol\Ats\Services\Engagement::of($role); if (!$isPool && $engT !== 'placement'): ?> · <span class="chip <?= $engT === 'inhouse' ? 'yes' : 'sand' ?>" style="text-decoration:none"><?= $engT === 'inhouse' ? 'Our own team' : 'Staffing: on Eshcol\x27s payroll' . (!empty($role['contract_months']) ? ', ' . (int) $role['contract_months'] . ' months' : '') ?></span><?php endif; ?></p>
     <h1><?= e($role['title']) ?> <span class="badge <?= e($role['status']) ?>" style="vertical-align:middle"><?= e($isPool ? 'talent pool' : str_replace('_', ' ', $role['status'])) ?></span></h1>
-    <div class="facts-inline" style="margin-top:6px">
+    <div class="facts-inline role-meta" style="margin-top:6px">
       <span><?= icon('pin', 'sm') ?><?= e($role['location'] ?: 'Location not set') ?><?= isset(WORK_MODES[$role['work_mode'] ?? '']) ? ' · ' . e(WORK_MODES[$role['work_mode']]) : '' ?></span>
       <?php if (!$isPool): ?><span><?= icon('users', 'sm') ?><?= (int) $role['positions'] ?> position<?= $role['positions'] > 1 ? 's' : '' ?></span><?php endif; ?>
       <?php if ($role['exp_min'] !== null || $role['exp_max'] !== null): ?>
@@ -150,7 +150,7 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
       <?php if ($role['notice_max_days'] !== null): ?><span><?= icon('clock', 'sm') ?>notice ≤ <?= (int) $role['notice_max_days'] ?> days</span><?php endif; ?>
     </div>
     <?php if (!$isPool && ($catMode ?? 'off') !== 'off'): ?>
-    <div class="facts-inline" style="margin-top:4px">
+    <div class="facts-inline role-meta" style="margin-top:4px">
       <span title="Fields of work this position takes"><?= icon('briefcase', 'sm') ?><?= $roleFields ? e(implode(', ', array_map(fn ($c) => \Eshcol\Ats\Services\Categoriser::functionName(\Eshcol\Ats\App::get(), $c), $roleFields))) : 'Field not set' ?><?= $roleFields && !$fieldsSet && !$contractor ? ' <span class="muted">(guessed from the title: <a href="/roles/' . (int) $role['id'] . '/edit#who-fieldset">set it</a>)</span>' : '' ?></span>
       <span><?= icon('pin', 'sm') ?><?= e(\Eshcol\Ats\Services\FunctionRouting::scopeOf($role) === 'radius' ? 'Within ' . \Eshcol\Ats\Services\FunctionRouting::radiusOf($role) . ' km of the office' : \Eshcol\Ats\Services\FunctionRouting::SCOPES[\Eshcol\Ats\Services\FunctionRouting::scopeOf($role)]) ?></span>
     </div>
@@ -194,14 +194,15 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
   $openDays = max(0, (int) round((time() - strtotime((string) ($role['opened_at'] ?: $role['created_at']))) / 86400));
   $topScore = $likely ? (int) $fitRows[(int) $likely[0]['id']]['score'] : null;
   $budget = $role['ctc_max_lpa'] !== null ? (float) $role['ctc_max_lpa'] : null; ?>
-<div class="tiles">
-  <div class="tile hl"><b><?= number_format($total) ?></b><span>Candidates</span></div>
-  <div class="tile"><b><?= count($likely) ?></b><span>Strong or Possible</span></div>
+<?php // Number tiles in the new design (20 Nov 2026): label and icon on top, the number, a short line under it. ?>
+<div class="metrics five">
+  <div class="metric m1"><span><?= icon('users', 'sm') ?>Total candidates</span><b><?= number_format($total) ?></b><small>Everyone on this position</small></div>
+  <div class="metric m2"><span><?= icon('sparkles', 'sm') ?>Strong or possible</span><b><?= count($likely) ?></b><small>Claude's best matches, still to decide</small></div>
   <?php if (\Eshcol\Ats\Services\Engagement::of($role) === 'inhouse'): $ivN = count(array_filter($all, fn ($a) => in_array(\Eshcol\Ats\Services\Stages::code(\Eshcol\Ats\App::get(), (int) ($a['stage_id'] ?? 0)), ['interview', 'offer', 'joined'], true))); ?>
-  <div class="tile"><b><?= $ivN ?></b><span>At interview or later</span></div>
-  <?php else: ?><div class="tile"><b><?= $sentN ?></b><span>Sent to client</span></div><?php endif; ?>
-  <div class="tile"><b><?= $openDays ?> day<?= $openDays === 1 ? '' : 's' ?></b><span>Open for</span></div>
-  <div class="tile"><b><?= $topScore ?? '–' ?></b><span>Top match</span></div>
+  <div class="metric m3"><span><?= icon('calendar', 'sm') ?>At interview or later</span><b><?= $ivN ?></b><small>Interview, offer or joined</small></div>
+  <?php else: ?><div class="metric m3"><span><?= icon('send', 'sm') ?>Sent to client</span><b><?= $sentN ?></b><small>CVs with <?= e($role['client']) ?></small></div><?php endif; ?>
+  <div class="metric m4"><span><?= icon('clock', 'sm') ?>Open for</span><b><?= $openDays ?> <em>day<?= $openDays === 1 ? '' : 's' ?></em></b><small>Since <?= e(nice_date($role['opened_at'] ?: $role['created_at'])) ?></small></div>
+  <div class="metric m5"><span><?= icon('award', 'sm') ?>Top match</span><b><?= $topScore ?? '–' ?></b><small><?= $likely ? e($likely[0]['full_name'] ?: 'Name not found') : 'Nobody assessed yet' ?></small></div>
 </div>
 <?php // Top candidates was folded into the Responded / Yet to respond tabs below (17 Nov 2026): the same ranking, one table. ?>
 <?php endif; ?>
@@ -222,8 +223,11 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
 
 <section class="tab-panel" id="tab-pipeline" data-panel="pipeline">
   <?php // One candidate table with tabs (17 Nov 2026): Responded, Yet to respond, Shortlisted, Found in database, Everyone.
-  $tabUrl = fn (string $w): string => '/roles/' . (int) $role['id'] . '?who=' . $w . '#tab-pipeline'; ?>
-  <?php if (!$isPool && ((\Eshcol\Ats\Auth::user()['role'] ?? '') === 'owner')): ?>
+  $tabUrl = fn (string $w): string => '/roles/' . (int) $role['id'] . '?who=' . $w . '#tab-pipeline';
+  // The side panel shows beside the ranked lists (the board needs the full width).
+  $pipeAside = !$isPool && in_array($who, ['responded', 'waiting', 'short'], true); ?>
+  <div class="pipe-layout<?= $pipeAside ? ' with-aside' : '' ?>"><div class="pipe-main">
+  <?php if (!$isPool && !$pipeAside && ((\Eshcol\Ats\Auth::user()['role'] ?? '') === 'owner')): ?>
     <p class="small" style="margin:0 0 8px;text-align:right"><a href="/roles/<?= (int) $role['id'] ?>/screen"><?= icon('check', 'sm') ?> Screening rules: check who doesn't meet them</a></p>
   <?php endif; ?>
   <nav class="stage-tabs who-tabs" aria-label="Candidates">
@@ -290,7 +294,7 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
       <?php if (!$wl): ?>
         <div class="card empty"><?= $who === 'responded' ? 'Nobody has responded yet.' : 'Nobody is waiting: everyone we asked has answered.' ?></div>
       <?php else: ?>
-        <div class="table-wrap"><table class="list">
+        <div class="table-wrap"><table class="list cand-list">
           <thead><tr><th>Rank</th><th>Candidate</th><th>Stage</th></tr></thead>
           <tbody><?php foreach ($wl as $i => $a) { echo $row($a, $i + 1); } ?></tbody>
         </table></div>
@@ -345,7 +349,7 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
       <noscript><p class="small muted">Dragging needs JavaScript. Use the List view to change stages.</p></noscript>
     <?php else: ?>
       <?php if ($apps): ?>
-        <div class="table-wrap"><table class="list">
+        <div class="table-wrap"><table class="list cand-list">
           <thead><tr><th>Score</th><th>Candidate</th><th>Stage</th></tr></thead>
           <?php $cap = !empty($_GET['all']) ? PHP_INT_MAX : 100; // the first 100, best first (B12, 15 Nov 2026) ?>
           <tbody><?php foreach (array_slice($apps, 0, $cap) as $a) { echo $row($a); } ?></tbody>
@@ -357,12 +361,39 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
       <?php if ($below): ?>
         <details class="card" style="margin-top:18px"<?= $apps ? '' : ' open' ?>>
           <summary><b>Below the threshold of <?= $threshold ?> (<?= count($below) ?>)</b> <span class="small muted">still here, nobody is rejected automatically</span></summary>
-          <div class="table-wrap" style="margin-top:12px"><table class="list"><tbody><?php foreach (array_slice($below, 0, !empty($_GET['all']) ? PHP_INT_MAX : 100) as $a) { echo $row($a); } ?></tbody></table></div>
+          <div class="table-wrap" style="margin-top:12px"><table class="list cand-list"><tbody><?php foreach (array_slice($below, 0, !empty($_GET['all']) ? PHP_INT_MAX : 100) as $a) { echo $row($a); } ?></tbody></table></div>
           <?php if (empty($_GET['all']) && count($below) > 100): ?><p class="small" style="margin:10px 0 0">Showing 100 of <?= count($below) ?>. <a href="/roles/<?= (int) $role['id'] ?>?view=list&amp;all=1#tab-pipeline">Show everyone</a></p><?php endif; ?>
         </details>
       <?php endif; ?>
     <?php endif; ?>
   <?php endif; ?>
+  </div>
+  <?php if ($pipeAside): // The side panel from the new design (20 Nov 2026): the best matches at a glance, and what to do next.
+    $topThree = array_slice($likely, 0, 3);
+    $pct = $total ? (int) round(count($likely) * 100 / $total) : 0; ?>
+  <aside class="insights" aria-label="At a glance">
+    <p class="ins-head"><?= icon('sparkles', 'sm') ?>At a glance</p>
+    <h3><?= $likely ? count($likely) . ' strong or possible match' . (count($likely) === 1 ? '' : 'es') : 'No strong matches yet' ?></h3>
+    <p><?= $likely ? 'Start with the strongest and keep the conversation going.' : 'Upload more CVs, or look in your database for people who fit.' ?></p>
+    <?php if ($topThree): ?>
+      <div class="match-stack">
+        <?php foreach ($topThree as $tp): $tn = $tp['full_name'] ?: 'Name not found'; ?><a class="avatar sm" style="--h:<?= avatar_hue($tn) ?>" href="/candidates/<?= (int) $tp['candidate_id'] ?>?role=<?= (int) $role['id'] ?>" title="<?= e($tn) ?>, Claude <?= (int) $fitRows[(int) $tp['id']]['score'] ?>"><?= e(initials($tn)) ?></a><?php endforeach; ?>
+        <?php if (count($likely) > 3): ?><b>+<?= count($likely) - 3 ?></b><?php endif; ?>
+      </div>
+    <?php endif; ?>
+    <hr>
+    <div class="ins-row"><b>Candidate fit</b><span><?= count($likely) ?> of <?= number_format($total) ?></span></div>
+    <div class="ins-track"><i style="width:<?= $pct ?>%"></i></div>
+    <p class="small muted" style="margin:6px 0 0">Strong or possible, still to decide</p>
+    <div class="ins-row" style="margin-top:14px"><b>Replies</b><span><?= count($responded) ?> responded · <?= count($waitingList) ?> waiting</span></div>
+    <?php if ($likely): ?><a class="btn ins-btn" href="/candidates/<?= (int) $likely[0]['candidate_id'] ?>?role=<?= (int) $role['id'] ?>">Open the best match</a><?php endif; ?>
+    <?php if ($shortN && \Eshcol\Ats\Services\Engagement::of($role) !== 'inhouse'): ?><a class="btn ghost ins-btn" href="/roles/<?= (int) $role['id'] ?>/shortlist/new"><?= icon('send', 'sm') ?>Send <?= $shortN ?> shortlisted</a><?php endif; ?>
+    <?php if ((\Eshcol\Ats\Auth::user()['role'] ?? '') === 'owner'): ?>
+      <div class="ins-foot"><?= icon('check', 'sm') ?><div><b>Screening rules</b><p>Check who doesn't meet this position's rules.</p><a href="/roles/<?= (int) $role['id'] ?>/screen">View screening rules</a></div></div>
+    <?php endif; ?>
+  </aside>
+  <?php endif; ?>
+  </div>
 </section>
 
 <?php if (!$isPool): ?>

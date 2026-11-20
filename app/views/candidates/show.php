@@ -67,24 +67,6 @@ $backApp = $backRole ? (int) (array_values(array_filter($apps, fn ($x) => (int) 
         if (in_array($catSt, ['pending', 'working'], true)) { $states[] = '<span class="chip state-busy">Being given a field of work</span>'; }
         if ($states): ?><p class="small" style="margin:4px 0 0"><?= implode(' ', $states) ?></p><?php endif; ?>
       <p class="sub job-line"><?= e($c['current_title'] ?: 'Position not found') ?><?= $c['current_company'] ? ' at ' . e($c['current_company']) : '' ?></p>
-      <div class="facts-inline">
-        <span><?= icon('pin', 'sm') ?><?= e(\Eshcol\Ats\Services\Commute::place($c['locality'] ?? null, $c['location']) ?: 'Location unknown') ?></span>
-        <?php // How far from each client office they're put forward for (16 Nov 2026): the area guide and, where both map points are known, km.
-        $hdrApp = \Eshcol\Ats\App::get();
-        $hdrCm = new \Eshcol\Ats\Services\Commute(new \Eshcol\Ats\Services\Skills($hdrApp->db));
-        foreach ($hdrApp->db->all("SELECT DISTINCT cl.id, cl.name, cl.interview_address, cl.maps_url FROM applications a JOIN roles r ON r.id = a.role_id JOIN clients cl ON cl.id = r.client_id
-                WHERE a.candidate_id = ? AND r.is_pool = 0 AND r.status IN ('open','on_hold') AND cl.interview_address IS NOT NULL AND cl.interview_address <> ''", [(int) $c['id']]) as $hdrCl):
-            $hdrOff = $hdrCm->localityIn((string) $hdrCl['interview_address'], $hdrCl['maps_url']);
-            $hdrCom = $hdrOff ? $hdrCm->between($c['locality'] ?? null, $c['location'] ?? null, $hdrOff) : null;
-            if (!$hdrCom) { continue; } ?>
-          <span class="km k-<?= e($hdrCom['level']) ?>" title="From <?= e(\Eshcol\Ats\Services\Commute::place($c['locality'] ?? null, $c['location'])) ?> to <?= e($hdrCl['name']) ?>'s office at <?= e($hdrOff['locality']) ?>. A straight-line guide, not road distance or travel time."><?= icon('pin', 'sm') ?><?php $hdrWord = ['near' => 'Near', 'moderate' => 'Moderate', 'far' => 'Far'][$hdrCom['level']] ?? ''; ?><?= e(isset($hdrCom['km'])
-            ? \Eshcol\Ats\Services\Commute::kmLabel($hdrCom['km']) . ' from ' . $hdrOff['locality'] . ($hdrWord !== '' ? " ($hdrWord)" : '')
-            : $hdrCom['label'] . ' (office at ' . $hdrOff['locality'] . ')') ?></span>
-        <?php endforeach; ?>
-        <span><?= icon('award', 'sm') ?><?= e(experience(exp_now($c))) ?><?= exp_is_estimate($c) ? ' (est.)' : '' ?></span>
-        <span><?= icon('clock', 'sm') ?>Notice <?= $c['notice_days'] === null ? '?' : ((int) $c['notice_days'] === 0 ? 'immediate' : (int) $c['notice_days'] . ' days') ?></span>
-        <span>₹ <?= e(lpa($c['ctc_current_lpa'])) ?> → <?= e(lpa($c['ctc_expected_lpa'])) ?><?= $c['ctc_min_lpa'] !== null ? ' <span class="muted">(min ' . e(lpa($c['ctc_min_lpa'])) . ')</span>' : '' ?></span>
-      </div>
       <p class="meta-pills"><span>On file since <?= e(nice_date($c['created_at'])) ?></span><span>Source: <?= e(!empty($c['channel']) ? channel_name($c['channel']) : $c['source']) ?></span><span>Last contact <?= e(nice_date($c['last_activity_at'] ?? $c['created_at'])) ?></span><span>Kept until <?= e(nice_date($c['purge_after'])) ?><?= $c['retention_note'] ? ' (' . e($c['retention_note']) . ')' : '' ?></span></p>
     </div>
     <div class="actions">
@@ -93,6 +75,27 @@ $backApp = $backRole ? (int) (array_values(array_filter($apps, fn ($x) => (int) 
       <?php if ($c['email']): ?><a class="btn ghost" href="mailto:<?= e($c['email']) ?>"><?= icon('mail') ?><span class="hide-sm">Email</span></a><?php endif; ?>
       <?php if (!\Eshcol\Ats\Access::restricted($user ?? null)): ?><a class="btn" href="/candidates/<?= $c['id'] ?>/edit"><?= icon('edit') ?>Edit</a><?php endif; ?>
     </div>
+  </div>
+  <?php // The summary band (20 Nov 2026, from Benjamin's chosen design): where they are, how long they've worked, pay, and when they can join.
+    $hdrApp = \Eshcol\Ats\App::get();
+    $hdrCm = new \Eshcol\Ats\Services\Commute(new \Eshcol\Ats\Services\Skills($hdrApp->db));
+    $kmLines = [];
+    // How far from each client office they're put forward for (16 Nov 2026): the area guide and, where both map points are known, km.
+    foreach ($hdrApp->db->all("SELECT DISTINCT cl.id, cl.name, cl.interview_address, cl.maps_url FROM applications a JOIN roles r ON r.id = a.role_id JOIN clients cl ON cl.id = r.client_id
+            WHERE a.candidate_id = ? AND r.is_pool = 0 AND r.status IN ('open','on_hold') AND cl.interview_address IS NOT NULL AND cl.interview_address <> ''", [(int) $c['id']]) as $hdrCl) {
+        $hdrOff = $hdrCm->localityIn((string) $hdrCl['interview_address'], $hdrCl['maps_url']);
+        $hdrCom = $hdrOff ? $hdrCm->between($c['locality'] ?? null, $c['location'] ?? null, $hdrOff) : null;
+        if (!$hdrCom) { continue; }
+        $hdrWord = ['near' => 'Near', 'moderate' => 'Moderate', 'far' => 'Far'][$hdrCom['level']] ?? '';
+        $kmLines[] = '<span class="km-line k-' . e($hdrCom['level']) . '" title="From ' . e(\Eshcol\Ats\Services\Commute::place($c['locality'] ?? null, $c['location'])) . ' to ' . e($hdrCl['name']) . '\'s office at ' . e($hdrOff['locality']) . '. A straight-line guide, not road distance or travel time.">'
+            . e(isset($hdrCom['km']) ? \Eshcol\Ats\Services\Commute::kmLabel($hdrCom['km']) . ' from ' . $hdrOff['locality'] . ($hdrWord !== '' ? " ($hdrWord)" : '') : $hdrCom['label'] . ' (office at ' . $hdrOff['locality'] . ')') . '</span>';
+    }
+    $nd = $c['notice_days']; ?>
+  <div class="sum-band">
+    <div class="sum s1"><span class="sum-ic"><?= icon('pin', 'sm') ?></span><div><span class="lbl">Location</span><b><?= e(\Eshcol\Ats\Services\Commute::place($c['locality'] ?? null, $c['location']) ?: 'Not known') ?></b><small><?= $kmLines ? implode('<br>', $kmLines) : (!empty($c['pin_code']) ? 'PIN ' . e($c['pin_code']) : 'No client office to measure from') ?></small></div></div>
+    <div class="sum s2"><span class="sum-ic"><?= icon('award', 'sm') ?></span><div><span class="lbl">Experience</span><b><?= e(experience(exp_now($c))) ?></b><small><?= exp_is_estimate($c) ? 'Estimated today, ' . e(experience($c['exp_months'])) . ' on ' . e(nice_date($c['exp_as_of'])) : e(level_name(exp_now($c)) !== null ? level_name(exp_now($c)) . ' level' : 'Level not known') ?></small></div></div>
+    <div class="sum s3"><span class="sum-ic">₹</span><div><span class="lbl">Current → expected CTC</span><b><?= e(lpa($c['ctc_current_lpa'])) ?> → <?= e(lpa($c['ctc_expected_lpa'])) ?></b><small><?= $c['ctc_min_lpa'] !== null ? 'Lowest they\'d accept ' . e(lpa($c['ctc_min_lpa'])) : 'Lowest they\'d accept: not asked yet' ?></small></div></div>
+    <div class="sum s4"><span class="sum-ic"><?= icon('clock', 'sm') ?></span><div><span class="lbl">Notice period</span><b><?= $nd === null ? 'Not known' : ((int) $nd === 0 ? 'Immediate' : (int) $nd . ' days') ?></b><small><?= !empty($c['serving_notice']) ? 'Serving notice' . (!empty($c['last_working_day']) ? ', last day ' . e(nice_date($c['last_working_day'])) : '') : ($nd === null ? 'Ask when you speak to them' : ((int) $nd === 0 ? 'Can join right away' : 'From the day they resign')) ?></small></div></div>
   </div>
   <?php if (!empty($c['red_listed_at'])): ?>
     <div class="flash error" style="margin:14px 0 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
