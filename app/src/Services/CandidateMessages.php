@@ -102,6 +102,37 @@ final class CandidateMessages
         return $out;
     }
 
+    /** The JD (for this role) and company profile (for its client) document ids, if uploaded - to prefill a one-click message. */
+    public function roleDocIds(int $roleId, int $clientId): array
+    {
+        $db = $this->app->db;
+        $ids = [];
+        if ($id = $db->col("SELECT id FROM documents WHERE owner_type = 'role' AND owner_id = ? AND kind = 'jd' ORDER BY id DESC LIMIT 1", [$roleId])) {
+            $ids[] = (int) $id;
+        }
+        if ($id = $db->col("SELECT id FROM documents WHERE owner_type = 'client' AND owner_id = ? AND kind = 'company_profile' ORDER BY id DESC LIMIT 1", [$clientId])) {
+            $ids[] = (int) $id;
+        }
+        return $ids;
+    }
+
+    /**
+     * A one-click nudge to someone who hasn't responded (Benjamin, 18 Nov 2026): "we have an open position,
+     * here's the JD and company profile, what's your CTC and notice?" Named how they came to us, when known.
+     * @return array{0:string,1:string} [subject, body]
+     */
+    public static function openingNudge(array $c, array $role, ?string $locality): array
+    {
+        $first = Questionnaires::firstName($c);
+        $via = !empty($c['channel']) ? channel_name($c['channel']) : ($c['source'] ?: null);
+        $where = $locality ? " in $locality" : '';
+        $subject = $role['title'] . ' opening with ' . $role['client'] . ($locality ? " - $locality" : '');
+        $body = "Dear $first,\n\nWe received your CV" . ($via ? " through $via" : '') . " some time ago for one of our job postings. We have an open position with our client$where for {$role['title']}.\n\n"
+            . "Attaching the company profile and the JD for your review.\n\n"
+            . "If you're interested, could you reply with your current CTC, expected CTC, and the notice period you'd need to join?";
+        return [$subject, $body];
+    }
+
     /**
      * @param int[] $docIds documents to attach (only those attachableDocs lists for this candidate)
      * @param array<int, array{path:string, name:string}> $files already-stored files to attach (e.g. an uploaded one-off)

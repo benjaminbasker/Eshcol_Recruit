@@ -27,6 +27,15 @@ $foundN = count($found['fits'] ?? []);
 $who = in_array($_GET['who'] ?? '', ['responded', 'waiting', 'short', 'found'], true) ? $_GET['who']
     : (!$isPool && !isset($_GET['view']) && !$stageFilter && $responded ? 'responded' : '');
 if ($who) { $view = 'list'; }
+// A one-click nudge for someone who hasn't responded (18 Nov 2026): the open position, the JD and company
+// profile attached, asking for their CTC and notice. Role-level, so worked out once, not per candidate.
+$openingLocality = null;
+$openingDocIds = [];
+if (!$isPool) {
+    $openingOffice = (new \Eshcol\Ats\Services\Commute(new \Eshcol\Ats\Services\Skills(\Eshcol\Ats\App::get()->db)))->localityIn($role['interview_address'] ?? null, $role['maps_url'] ?? null);
+    $openingLocality = $openingOffice['locality'] ?? null;
+    $openingDocIds = (new \Eshcol\Ats\Services\CandidateMessages(\Eshcol\Ats\App::get()))->roleDocIds((int) $role['id'], (int) $role['client_id']);
+}
 $qChip = function (?array $q, int $candidateId): string {
     if (!$q) { return ''; }
     $flags = json_decode((string) $q['flags'], true) ?: [];
@@ -70,7 +79,7 @@ $fitChip = function (array $a) use ($fit, $sentToClient): string {
         ? ' <span class="chip sand" title="The position\'s requirements changed after this assessment: press Re-assess everyone on the Claude tab">role changed</span>' : '';
     return $sentChip . $staleChip . '<span class="chip ' . (['Strong' => 'yes', 'Possible' => 'sand', 'Weak' => 'no'][$f['band']] ?? '') . '" style="text-decoration:none" title="Assessed by Claude">Claude ' . (int) $f['score'] . ' · ' . e($f['band']) . '</span>';
 };
-$row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientDecisions, $notice, $qChip, $fitChip, $isShort, $kfOf, $rankScore, $fitRowsAll): string {
+$row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientDecisions, $notice, $qChip, $fitChip, $isShort, $kfOf, $rankScore, $fitRowsAll, $who, $openingLocality, $openingDocIds): string {
     // In a ranked list the score shown is the one it is ranked by (Claude's, else the keyword score).
     $sc = $rank !== null ? $rankScore($a) : ($a['eff_score'] !== null ? (int) $a['eff_score'] : null);
     $cd = $clientDecisions[(int) $a['id']] ?? null;
@@ -84,7 +93,7 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
         <div style="display:flex;gap:10px;align-items:flex-start">
           <span class="avatar sm" style="--h:<?= avatar_hue($nm) ?>;margin-top:2px"><?= e(initials($nm)) ?></span>
           <div style="min-width:0">
-            <a href="/candidates/<?= $a['candidate_id'] ?>?role=<?= $role['id'] ?>"><b><?= e($nm) ?></b></a> <span class="ref"><?= ref_candidate($a['candidate_id']) ?></span> <?= \Eshcol\Ats\Services\KeyFacts::stageChip((string) $a['stage'], (string) ($a['stage_kind'] ?? '')) ?>
+            <a href="/candidates/<?= $a['candidate_id'] ?>?role=<?= $role['id'] ?>"><b><?= e($nm) ?></b></a> <span class="ref"><?= ref_candidate($a['candidate_id']) ?></span> <?= \Eshcol\Ats\Services\KeyFacts::stageChip(\Eshcol\Ats\Services\KeyFacts::stageName(\Eshcol\Ats\App::get(), (string) $a['stage'], (int) $a['stage_id'], isset($a['iv_round']) ? (int) $a['iv_round'] : null), (string) ($a['stage_kind'] ?? '')) ?>
             <?php if ($a['text_status'] === 'needs_ocr'): ?> <span class="confirm">scan</span><?php endif; ?>
             <?php if ($a['do_not_contact']): ?> <span class="badge cancelled">do not contact</span><?php endif; ?>
             <?php if (!empty($a['unreliable_at'])): ?> <span class="badge cancelled" title="<?= e(\Eshcol\Ats\Services\Reliability::describe($a)) ?>">unreliable</span><?php endif; ?>
@@ -110,6 +119,15 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
           <noscript><button class="btn small">Move</button></noscript>
         </form>
         <span class="small muted"><?= e(ucfirst($a['source'])) ?> · <?= e(nice_date($a['applied_at'])) ?></span>
+        <?php if ($who === 'waiting' && !empty($a['email']) && !$a['do_not_contact'] && empty($a['unreliable_at']) && empty($a['red_listed_at'])):
+          [$openSubj, $openBody] = \Eshcol\Ats\Services\CandidateMessages::openingNudge($a, $role, $openingLocality); ?>
+          <form method="post" action="/candidates/<?= (int) $a['candidate_id'] ?>/messages" style="margin-top:6px">
+            <?= csrf() ?><input type="hidden" name="subject" value="<?= e($openSubj) ?>"><input type="hidden" name="body" value="<?= e($openBody) ?>">
+            <input type="hidden" name="back" value="<?= e($_SERVER['REQUEST_URI'] ?? '') ?>"><input type="hidden" name="app_id" value="<?= (int) $a['id'] ?>">
+            <?php foreach ($openingDocIds as $did): ?><input type="hidden" name="doc[]" value="<?= (int) $did ?>"><?php endforeach; ?>
+            <button class="btn small ghost" type="submit" title="<?= e($openSubj . "\n\n" . $openBody) ?>" data-confirm-click="Send the open-position email to <?= e($nm) ?>?"><?= icon('mail', 'sm') ?>Send opening</button>
+          </form>
+        <?php endif; ?>
       </td>
     </tr>
     <?php return (string) ob_get_clean();

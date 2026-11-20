@@ -425,6 +425,15 @@ final class CandidateController extends Controller
         Http::redirect("/candidates/$id");
     }
 
+    /** Clears a candidate's red list mark (it is set automatically by a hard rejection, never manually). */
+    public function redList(int $id): never
+    {
+        $this->findOr404('candidates', $id);
+        (new \Eshcol\Ats\Services\RedList($this->app))->clear($id, (int) Auth::user()['id']);
+        Http::flash('ok', 'Cleared. They can be put forward again.');
+        Http::redirect("/candidates/$id");
+    }
+
     public function note(int $id): never
     {
         $this->findOr404('candidates', $id);
@@ -649,6 +658,10 @@ final class CandidateController extends Controller
         }
         // The same decision on their other positions with this client (17 Nov 2026).
         foreach ($mover->mirror($a, $to, $note, (int) $u['id'], $byOwner) as $msg) {
+            Http::flash('ok', $msg);
+        }
+        // A hard rejection red-lists them for every position, any client (18 Nov 2026).
+        foreach ($mover->redList($a, $to, $note, (int) $u['id'], $byOwner) as $msg) {
             Http::flash('ok', $msg);
         }
         (new \Eshcol\Ats\Services\Questionnaires($this->app))->markReviewed((int) $a['id'], (int) $a['candidate_id'], (int) $u['id']);

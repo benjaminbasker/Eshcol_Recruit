@@ -47,6 +47,13 @@ final class MessageController extends Controller
         if (!$r['ok']) {
             $_SESSION['message_draft'][$candidateId] = ['subject' => (string) ($_POST['subject'] ?? ''), 'body' => (string) ($_POST['body'] ?? '')];
         }
+        // Sent from a list row (e.g. "Send opening" on Yet to respond, 18 Nov 2026): stay on that list, at the row,
+        // instead of jumping to the candidate's own page.
+        $back = (string) ($_POST['back'] ?? '');
+        $appId = (int) ($_POST['app_id'] ?? 0);
+        if ($back !== '' && $appId) {
+            Http::redirect(CandidateController::backToRow($back, $appId, "/candidates/$candidateId#messages"));
+        }
         Http::redirect("/candidates/$candidateId#messages");
     }
 }

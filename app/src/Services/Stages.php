@@ -23,6 +23,8 @@ final class Stages
     public const REVIEW = 'review';
     public const NO_RESPONSE = 'no_response';
     public const AWAITING = 'awaiting_reply';
+    // Update 072 (the red list, 18 Nov 2026): a hard rejection, not tied to one role.
+    public const REJECTED = 'rejected';
 
     /** Codes every install must have: the app's rules (offer approval, joining, shortlists, reports) depend on them. */
     public const REQUIRED = [self::SHORTLISTED, self::SUBMITTED, self::INTERVIEW, self::OFFER, self::JOINED, self::NOT_SUITABLE, self::WITHDREW, self::FUTURE];

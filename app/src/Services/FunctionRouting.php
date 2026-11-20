@@ -49,6 +49,9 @@ final class FunctionRouting
         if (!empty($cand['unreliable_at'])) {
             return ['blocked', 'marked unreliable'];
         }
+        if (!empty($cand['red_listed_at'])) {
+            return ['blocked', 'red-listed'];
+        }
         $text = (string) $this->app->db->col('SELECT text FROM cv_files WHERE candidate_id = ? AND text IS NOT NULL ORDER BY id DESC LIMIT 1', [(int) $cand['id']]);
         return preg_match_all('/\p{L}/u', $text) < 200 ? ['no_cv_text', 'no readable CV yet'] : null;
     }

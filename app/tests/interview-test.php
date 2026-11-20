@@ -247,4 +247,66 @@ $check('…and 11:00 is no longer free for anyone', !array_filter($wk2['open'], 
 $open8 = array_values(array_filter($wk2['open'], fn ($o) => $o['starts_at'] === "$t8:00"));
 $check('removing a free time takes it off every position', $svc->removeClientTime((int) $open8[0]['slot_id']) === 2 && !$db->col('SELECT 1 FROM interview_slots s JOIN roles r ON r.id = s.role_id WHERE r.client_id = ? AND s.starts_at = ?', [$clientId, "$t8:00"]));
 $check('the week starts on Monday', \Eshcol\Ats\Controllers\CalendarController::monday('2026-11-19') === '2026-11-16' && \Eshcol\Ats\Controllers\CalendarController::monday('2026-11-16') === '2026-11-16');
+
+echo "\nLast-minute changes (20 Nov 2026: Deepa Rani was late; her new time went to the client as round 2)\n";
+[$d, $da] = $person('Deepa Latetest');
+$td1 = date('Y-m-d 17:30', strtotime('+6 days'));
+[$okD1, , $dIv] = $svc->book($da, 1, 'virtual', str_replace(' ', 'T', $td1), 30, [], $uid);
+$check('a booked round 1 that hasn\'t happened is not "done": the next round is still 1', $okD1 && $svc->nextRound($da) === 1);
+$td2 = date('Y-m-d 17:30', strtotime('+7 days'));
+$beforeClient = (int) $db->col('SELECT COALESCE(MAX(id), 0) FROM email_queue');
+[$okR, $msgR] = $svc->reschedule($dIv, str_replace(' ', 'T', $td2), 30, 'virtual', [], null, $uid);
+$moved = $db->one('SELECT * FROM interviews WHERE id = ?', [$dIv]);
+$check('"Change the time" moves the same interview, same round: ' . $msgR, $okR && $moved['starts_at'] === "$td2:00" && (int) $moved['round'] === 1 && (int) $moved['reschedules'] === 1
+    && (int) $db->col("SELECT COUNT(*) FROM interviews WHERE application_id = ? AND status IN ('booked','choosing')", [$da]) === 1);
+$rl = $mail($d, 'Interview rescheduled:%');
+$check('the candidate gets the new call letter, saying it moved (old and new time), with the JD and calendar invite', $rl && str_contains($rl['text'], 'Your interview has moved, Deepa.')
+    && str_contains($rl['text'], date('l j F', strtotime($td2))) && str_contains($rl['text'], 'it was ' . date('l j F', strtotime($td1))) && in_array('Interview.ics', $att($rl), true));
+$cr = $db->one("SELECT * FROM email_queue WHERE id > ? AND kind = 'client_interview' AND subject LIKE 'Interview rescheduled:%' ORDER BY id DESC LIMIT 1", [$beforeClient]);
+$check('the client is told straight away: "round 1 … rescheduled", Was and Now', $cr && str_contains($cr['text'], 'round 1 interview with Deepa Latetest') && str_contains($cr['text'], 'Was: ') && str_contains($cr['text'], 'Now: ') && !str_contains($cr['text'], 'round 2'));
+$check('the calendar invite replaces the old entry (same UID, SEQUENCE 1)', str_contains($svc->ics($moved, $svc->application($da), true), 'SEQUENCE:1') && str_contains($svc->ics($moved, $svc->application($da), true), 'UID:iv-' . $dIv . '-c@'));
+$td3 = date('Y-m-d 16:00', strtotime('+8 days'));
+[$okB2, , $sameId] = $svc->book($da, 1, 'virtual', str_replace(' ', 'T', $td3), 30, [], $uid);
+$check('"Book round 1" again while round 1 is booked moves it instead of adding a second interview', $okB2 && $sameId === $dIv
+    && (int) $db->col("SELECT COUNT(*) FROM interviews WHERE application_id = ? AND status = 'booked'", [$da]) === 1);
+$db->run('UPDATE interviews SET round = 2 WHERE id = ?', [$dIv]); // the mistake as it happened
+$svc->reschedule($dIv, str_replace(' ', 'T', $td3), 30, 'virtual', [], 1, $uid);
+$fix = $db->one("SELECT * FROM email_queue WHERE id > ? AND kind = 'client_interview' ORDER BY id DESC LIMIT 1", [$beforeClient]);
+$check('a wrongly numbered round can be corrected, and the client is told it is round 1, not round 2', (int) $db->col('SELECT round FROM interviews WHERE id = ?', [$dIv]) === 1
+    && str_contains((string) $fix['text'], 'this is round 1, not round 2'));
+[$okClash, $msgClash] = $svc->reschedule($dIv, str_replace(' ', 'T', "$t7"), 30, 'virtual', [], null, $uid);
+$check('moving onto a time already booked with this client is refused: "' . $msgClash . '"', !$okClash);
+$beforeCancel = (int) $db->col('SELECT COALESCE(MAX(id), 0) FROM email_queue');
+$told = $svc->cancel($dIv, $uid, true, true, 'the client is travelling');
+$check('cancelling can email the candidate and the client, with the reason: "' . $told . '"', str_contains($told, 'Deepa Latetest') && str_contains($told, 'Radhika Daga')
+    && (bool) $db->col("SELECT 1 FROM email_queue WHERE id > ? AND candidate_id = ? AND subject LIKE 'Interview cancelled:%' AND text LIKE '%the client is travelling%'", [$beforeCancel, $d])
+    && (bool) $db->col("SELECT 1 FROM email_queue WHERE id > ? AND kind = 'client_interview' AND subject LIKE 'Interview cancelled:%'", [$beforeCancel]));
+$check('…and without the ticks, nobody is emailed', (function () use ($svc, $db, $da, $uid, $d) {
+    [, , $x] = $svc->book($da, 1, 'virtual', date('Y-m-d\T10:00', strtotime('+9 days')), 30, [], $uid);
+    $before = (int) $db->col('SELECT COALESCE(MAX(id), 0) FROM email_queue');
+    return $svc->cancel($x, $uid) === '' && !$db->col('SELECT 1 FROM email_queue WHERE id > ?', [$before]);
+})());
+
+echo "\nRounds 1 to 3, and the one-click invite for each (20 Nov 2026)\n";
+$sl = $db->insert('shortlists', ['role_id' => $role, 'created_by' => $uid, 'status' => 'answered', 'token_hash' => hash('sha256', "zz$tag"), 'token_enc' => 'zz', 'to_email' => "radhika.$tag@gmail.com", 'expires_at' => date('Y-m-d H:i:s', strtotime('+10 days'))]);
+[$e1, $e1a] = $person('Esha Readytest');
+[$e2, $e2a] = $person('Farid Readytest');
+foreach ([$e1a, $e2a] as $ea) {
+    $db->insert('shortlist_items', ['shortlist_id' => $sl, 'application_id' => $ea, 'decision' => 'shortlist', 'profile' => '{}']);
+}
+$ready1 = array_column($svc->readyFor($role, 1), 'application_id');
+$check('ready for round 1: everyone the client marked Shortlist and not yet invited', in_array($e1a, $ready1, true) && in_array($e2a, $ready1, true));
+[$okE, , $eIv] = $svc->book($e1a, 1, 'virtual', date('Y-m-d\T11:00', strtotime('+10 days')), 30, [], $uid);
+$check('…someone booked for round 1 drops off that list', $okE && !in_array($e1a, array_column($svc->readyFor($role, 1), 'application_id'), true));
+$svc->outcome($eIv, 'next_round', 'Strong', $uid);
+$check('through round 1: next is round 2, and ready for round 2', $svc->nextRound($e1a) === 2 && in_array($e1a, array_column($svc->readyFor($role, 2), 'application_id'), true)
+    && !in_array($e2a, array_column($svc->readyFor($role, 2), 'application_id'), true));
+\Eshcol\Ats\Services\KeyFacts::forgetStages();
+$check('every status tag says the round: "Client interview · Round 1"', str_contains(stage_tags($e1), 'Client interview · Round 1'));
+$svc->book($e1a, 2, 'in_person', date('Y-m-d\T15:00', strtotime('+11 days')), 45, [], $uid);
+\Eshcol\Ats\Services\KeyFacts::forgetStages();
+$check('…and "Round 2" once round 2 is booked', str_contains(stage_tags($e1), 'Client interview · Round 2'));
+$check('the round on the tags only shows at Client interview', \Eshcol\Ats\Services\KeyFacts::stageName($app, 'Shortlisted', (int) \Eshcol\Ats\Services\Stages::id($app, \Eshcol\Ats\Services\Stages::SHORTLISTED), 2) === 'Shortlisted');
+$db->run('DELETE FROM shortlist_items WHERE shortlist_id = ?', [$sl]);
+$db->run('DELETE FROM shortlists WHERE id = ?', [$sl]);
 exit(0);

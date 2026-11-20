@@ -24,9 +24,10 @@ $check('do-not-contact: silenced', C::silenced(['do_not_contact' => 1] + $fine) 
 $check('asked us not to keep their details: silenced, and never put forward', C::silenced(['removal_requested_at' => '2026-11-15 10:00:00'] + $fine)
     && !C::canPutForward(['removal_requested_at' => '2026-11-15 10:00:00'] + $fine));
 $check('marked unreliable: may be contacted, but not put forward', !C::silenced(['unreliable_at' => '2026-11-15'] + $fine) && !C::canPutForward(['unreliable_at' => '2026-11-15'] + $fine));
+$check('red-listed (18 Nov 2026): may be contacted, but not put forward', !C::silenced(['red_listed_at' => '2026-11-18'] + $fine) && !C::canPutForward(['red_listed_at' => '2026-11-18'] + $fine));
 $check('a row missing the columns counts as fine (not silenced)', !C::silenced([]));
 $check('SQL: contact', C::sql('c') === 'c.do_not_contact = 0 AND c.removal_requested_at IS NULL');
-$check('SQL: put forward adds unreliable', C::putForwardSql('x') === 'x.do_not_contact = 0 AND x.removal_requested_at IS NULL AND x.unreliable_at IS NULL');
+$check('SQL: put forward adds unreliable and red-listed', C::putForwardSql('x') === 'x.do_not_contact = 0 AND x.removal_requested_at IS NULL AND x.unreliable_at IS NULL AND x.red_listed_at IS NULL');
 
 echo "\nThe same-field rule\n";
 $check('half the must-haves is enough (2 of 4)', RoleRouter::sameField(2, 4));

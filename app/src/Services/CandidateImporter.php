@@ -116,7 +116,8 @@ final class CandidateImporter
             $cid = (int) $existing['candidate_id'];
             $added = $roleId ? $this->attach($cid, $roleId, $userId, $source) : false;
             $name = $db->col('SELECT full_name FROM candidates WHERE id = ?', [$cid]);
-            $flag = $db->col('SELECT unreliable_at FROM candidates WHERE id = ?', [$cid]) ? ' Note: this person is marked unreliable.' : '';
+            $flag = $db->col('SELECT unreliable_at FROM candidates WHERE id = ?', [$cid]) ? ' Note: this person is marked unreliable.'
+                : ($db->col('SELECT red_listed_at FROM candidates WHERE id = ?', [$cid]) ? ' Note: this person is red-listed.' : '');
             return $this->result('duplicate_file', 'This exact file is already on file' . ($added ? '; added to this role.' : '.') . $flag, $cid, (int) $existing['id'], $name ?: null);
         }
 
@@ -256,6 +257,8 @@ final class CandidateImporter
                 $message .= ' Note: this person was marked unreliable before.';
             } elseif ($db->col('SELECT unreliable_at FROM candidates WHERE id = ?', [$cid])) {
                 $message .= ' Note: this person is marked unreliable.';
+            } elseif ($db->col('SELECT red_listed_at FROM candidates WHERE id = ?', [$cid])) {
+                $message .= ' Note: this person is red-listed.';
             }
             // File names usually contain the person's name, so they are not written to the activity log.
             Audit::log('cv_imported', 'candidate', $cid, ['cv_file' => $cvId, 'type' => $ext, 'outcome' => $outcome]);

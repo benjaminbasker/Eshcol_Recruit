@@ -117,11 +117,23 @@ final class KeyFacts
             self::$stageCache[$id] = [];
         }
         $in = implode(',', $ids);
-        foreach ($app->db->all("SELECT a.candidate_id, r.id AS role_id, r.title, s.name AS stage, s.kind AS stage_kind FROM applications a JOIN roles r ON r.id = a.role_id
+        foreach ($app->db->all("SELECT a.candidate_id, r.id AS role_id, r.title, s.id AS stage_id, s.name AS stage, s.kind AS stage_kind,
+                (SELECT MAX(v.round) FROM interviews v WHERE v.application_id = a.id AND v.status IN ('choosing','booked','done')) AS iv_round
+                FROM applications a JOIN roles r ON r.id = a.role_id
                 JOIN stages s ON s.id = a.stage_id WHERE a.candidate_id IN ($in) AND r.is_pool = 0 AND r.status IN ('open','on_hold')
                 AND " . \Eshcol\Ats\Access::roleFilter(\Eshcol\Ats\Auth::user(), 'r.id') . ' ORDER BY s.sort DESC, r.title') as $ap) {
+            $ap['stage'] = self::stageName($app, (string) $ap['stage'], (int) $ap['stage_id'], $ap['iv_round'] !== null ? (int) $ap['iv_round'] : null);
             self::$stageCache[(int) $ap['candidate_id']][] = $ap;
         }
+    }
+
+    /**
+     * The stage as shown, with the interview round when they are at Client interview (20 Nov 2026): "Client interview ·
+     * Round 2", so every list says which round. $round: the latest round invited to, booked or held.
+     */
+    public static function stageName(\Eshcol\Ats\App $app, string $name, int $stageId, ?int $round): string
+    {
+        return $round && Stages::is($app, $stageId, Stages::INTERVIEW) ? $name . ' · Round ' . $round : $name;
     }
 
     /**
@@ -171,12 +183,17 @@ final class KeyFacts
     /**
      * A position's Responded / Yet to respond lists (17 Nov 2026), each best first. Responded: answered the details
      * request or wrote back. Yet to respond: asked or written to, no answer yet. Closed stages (fail, hold) are left
-     * out and counted in 'closed'. $apps: the position's applications; $kf: forCandidates(); $fitRows: by application id. Pure.
+     * out and counted in 'closed'. Someone marked Unreliable or red-listed is left out too (18 Nov 2026: nothing
+     * to review here), but still visible under "Everyone, by stage" with the mark shown.
+     * $apps: the position's applications; $kf: forCandidates(); $fitRows: by application id. Pure.
      */
     public static function replyLists(array $apps, array $kf, array $fitRows, ?callable $isShortlisted = null): array
     {
         $out = ['responded' => [], 'waiting' => [], 'closed' => ['responded' => 0, 'waiting' => 0]];
         foreach ($apps as $a) {
+            if (!empty($a['unreliable_at']) || !empty($a['red_listed_at'])) {
+                continue;
+            }
             $k = $kf[(int) $a['candidate_id']] ?? [];
             // Also responded (17 Nov 2026, Baliram): anyone at Shortlisted or later, and anyone whose salary and notice
             // are filled in however they reached us (often typed in after a call).

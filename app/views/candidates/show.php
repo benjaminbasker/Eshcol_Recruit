@@ -52,7 +52,11 @@ $backApp = $backRole ? (int) (array_values(array_filter($apps, fn ($x) => (int) 
     <div class="who">
       <h1><?= e($nm) ?><?= $srcLabel('full_name') ?>
         <?php if ($c['do_not_contact']): ?> <span class="badge cancelled" style="vertical-align:middle">do not contact</span><?php endif; ?>
-        <?php if (!empty($c['unreliable_at'])): ?> <span class="badge cancelled" style="vertical-align:middle">unreliable</span><?php endif; ?></h1>
+        <?php if (!empty($c['unreliable_at'])): ?> <span class="badge cancelled" style="vertical-align:middle">unreliable</span><?php endif; ?>
+        <?php if (!empty($c['red_listed_at'])): ?> <span class="badge cancelled" style="vertical-align:middle">red-listed</span><?php endif; ?></h1>
+      <?php // Where they stand on every open position, at the top of their page (20 Nov 2026: Soham's showed nowhere up here).
+        $hdrStages = stage_tags($c['id']);
+        if ($hdrStages !== ''): ?><p class="small" style="margin:6px 0 0"><?= $hdrStages ?></p><?php endif; ?>
       <?php // What Claude is doing with this CV right now (audit UI 7.1: clear states rather than "within five minutes").
         $sdb = \Eshcol\Ats\App::get()->db;
         $readSt = (string) $sdb->col("SELECT status FROM cv_ai_reads WHERE candidate_id = ? ORDER BY id DESC LIMIT 1", [$c['id']]);
@@ -90,6 +94,12 @@ $backApp = $backRole ? (int) (array_values(array_filter($apps, fn ($x) => (int) 
       <?php if (!\Eshcol\Ats\Access::restricted($user ?? null)): ?><a class="btn" href="/candidates/<?= $c['id'] ?>/edit"><?= icon('edit') ?>Edit</a><?php endif; ?>
     </div>
   </div>
+  <?php if (!empty($c['red_listed_at'])): ?>
+    <div class="flash error" style="margin:14px 0 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:220px"><b>Red-listed.</b> <?= e(\Eshcol\Ats\Services\RedList::describe($c)) ?><br><span class="small">A hard rejection on one position: left out of database searches, shortlists, screening and interview invitations for every position, with any client. Set automatically when an application is moved to "Rejected: insufficient information"; this clears it without reversing that stage.</span></div>
+      <form method="post" action="/candidates/<?= (int) $c['id'] ?>/red-list"><?= csrf() ?><button class="btn small ghost" type="submit" data-confirm-click="Clear the red list mark and allow them to be put forward again?">Clear the mark</button></form>
+    </div>
+  <?php endif; ?>
   <?php if (!empty($c['unreliable_at'])): ?>
     <div class="flash error" style="margin:14px 0 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
       <div style="flex:1;min-width:220px"><b>Unreliable.</b> <?= e(\Eshcol\Ats\Services\Reliability::describe($c)) ?><br><span class="small">Left out of database searches, shortlists, screening and interview invitations. If they apply again, their CV is still saved with this mark.</span></div>

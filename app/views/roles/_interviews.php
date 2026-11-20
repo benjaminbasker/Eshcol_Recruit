@@ -4,22 +4,45 @@ $kinds = \Eshcol\Ats\Services\Interviews::KINDS;
 $byRound = [];
 foreach ($slots as $s) { $byRound[(int) $s['round']][] = $s; }
 $upcoming = array_filter($ivs, fn ($i) => in_array($i['status'], ['choosing', 'booked'], true));
+// Ready to invite, per round (20 Nov 2026): round 1 = the client's shortlist; later rounds = through the previous one.
+// Everyone is ticked; one button sends each a link to choose one of the client's times for that round.
+$ivSvcR = new \Eshcol\Ats\Services\Interviews(\Eshcol\Ats\App::get());
+$readyBy = [];
+for ($r = 1; $r <= 3; $r++) {
+    $ready = $ivSvcR->readyFor((int) $role['id'], $r);
+    if ($ready) {
+        $readyBy[$r] = ['people' => $ready, 'open' => count($ivSvcR->openSlots((int) $role['id'], $r))];
+    }
+}
 ?>
 <section class="card" id="interviews">
   <div class="actions" style="justify-content:space-between;align-items:center">
     <h2 style="margin:0">Interviews <a class="small" style="font-weight:600;margin-left:8px" href="/calendar?client=<?= (int) $role['client_id'] ?>">Open the calendar ›</a></h2>
-    <?php if ($clientShortlisted): ?>
-      <form method="post" action="/roles/<?= (int) $role['id'] ?>/interviews/invite"><?= csrf() ?><input type="hidden" name="round" value="1">
-        <button class="btn small" type="submit" data-confirm-click="Email everyone the client marked Shortlist a link to choose a round 1 time?">Invite the client's shortlist to choose a time</button></form>
-    <?php endif; ?>
   </div>
+  <?php foreach ($readyBy as $r => $rb): ?>
+    <div class="card sand" style="margin:10px 0">
+      <p style="margin:0 0 4px"><b>Ready for round <?= $r ?>: <?= count($rb['people']) ?> candidate<?= count($rb['people']) === 1 ? '' : 's' ?></b>
+        <span class="small muted"><?= $r === 1 ? '· the client marked them Shortlist' : '· through round ' . ($r - 1) ?></span></p>
+      <?php if ($rb['open']): ?>
+        <form method="post" action="/roles/<?= (int) $role['id'] ?>/interviews/invite"><?= csrf() ?><input type="hidden" name="round" value="<?= $r ?>"><input type="hidden" name="back" value="/roles/<?= (int) $role['id'] ?>#interviews">
+          <ul class="iv-ready"><?php foreach ($rb['people'] as $p): ?><li><label><input type="checkbox" name="apps[]" value="<?= (int) $p['application_id'] ?>" checked> <?= e($p['full_name']) ?></label></li><?php endforeach; ?></ul>
+          <button class="btn" type="submit" style="white-space:normal;max-width:100%;text-align:left" data-confirm-click="Email the ticked candidates a link to choose one of the <?= (int) $rb['open'] ?> open round <?= $r ?> times?">Invite the ticked to choose a round <?= $r ?> time (<?= (int) $rb['open'] ?> open)</button>
+          <span class="hint">Each gets a link; times go first come, first served, and a time taken by one is gone for the others.</span>
+        </form>
+      <?php else: ?>
+        <p class="small" style="margin:4px 0 0"><?= e(implode(', ', array_column($rb['people'], 'full_name'))) ?></p>
+        <p class="small" style="margin:6px 0 0"><b>No round <?= $r ?> times yet.</b> Add the times the client gave you below (set Round to <?= $r ?>), then invite them here in one go.</p>
+      <?php endif; ?>
+    </div>
+  <?php endforeach; ?>
   <?php if ($upcoming): ?>
     <div class="iv-list">
       <?php prime_stages(array_column($upcoming, 'candidate_id')); foreach ($upcoming as $i): ?>
         <div class="iv-row">
           <span class="iv-when"><?= $i['starts_at'] ? '<b>' . date('D j M', strtotime($i['starts_at'])) . '</b><br>' . date('g:i A', strtotime($i['starts_at'])) : '<span class="muted">choosing</span>' ?></span>
           <div><a href="/candidates/<?= (int) $i['candidate_id'] ?>#interviews"><b><?= e($i['full_name']) ?></b></a> <?= stage_tags($i['candidate_id'], (int) $role['id']) ?> <span class="ref small"><?= ref_interview($i['id']) ?></span>
-            <br><span class="small muted">Round <?= (int) $i['round'] ?> · <?= e($kinds[$i['kind']]) ?> · <?= $i['status'] === 'booked' ? 'confirmed' . ($i['reminded_at'] ? ', reminded' : '') : 'invited to choose a time' ?></span></div>
+            <br><span class="small muted">Round <?= (int) $i['round'] ?> · <?= e($kinds[$i['kind']]) ?> · <?= $i['status'] === 'booked' ? 'confirmed' . ($i['reminded_at'] ? ', reminded' : '') . (!empty($i['reschedules']) ? ', moved ' . (int) $i['reschedules'] . '×' : '') : 'invited to choose a time' ?></span>
+            <?php if ($i['status'] === 'booked'): ?><br><a class="small" href="/candidates/<?= (int) $i['candidate_id'] ?>#interviews">Change the time or cancel ›</a><?php endif; ?></div>
         </div>
       <?php endforeach; ?>
     </div>

@@ -186,10 +186,51 @@ final class Interviews
             [$s['client_id'], $s['starts_at'], $s['round']])->rowCount();
     }
 
-    /** The next round for an application: one more than the last round that happened. */
+    /**
+     * The next round for an application: one more than the last round that actually took place (has a result). A round
+     * that is booked but hasn't happened yet is not "done" (20 Nov 2026: Deepa Rani's round 1, moved to the next day,
+     * went out as round 2 because a booked round 1 counted as finished).
+     */
     public function nextRound(int $applicationId): int
     {
-        return 1 + (int) $this->app->db->col("SELECT COALESCE(MAX(round), 0) FROM interviews WHERE application_id = ? AND status IN ('booked','done')", [$applicationId]);
+        return 1 + (int) $this->app->db->col("SELECT COALESCE(MAX(round), 0) FROM interviews WHERE application_id = ? AND status = 'done'", [$applicationId]);
+    }
+
+    /** The booked (not yet held) interview for this application's round, if any. */
+    public function bookedFor(int $applicationId, int $round): ?array
+    {
+        return $this->app->db->one("SELECT * FROM interviews WHERE application_id = ? AND round = ? AND status = 'booked' ORDER BY id DESC LIMIT 1", [$applicationId, $round]) ?: null;
+    }
+
+    /**
+     * Who is ready for a round of a position, for the one-click invite (20 Nov 2026): round 1 is everyone the client
+     * marked "Shortlist"; a later round is everyone whose previous round ended "Through to the next round". Leaves out
+     * anyone already invited to, booked for or through that round, and anyone we can't contact.
+     * @return list<array{application_id:int, candidate_id:int, full_name:string}>
+     */
+    public function readyFor(int $roleId, int $round): array
+    {
+        $db = $this->app->db;
+        $rows = $round <= 1
+            ? $db->all("SELECT DISTINCT a.id AS application_id, a.candidate_id, c.full_name FROM shortlist_items i JOIN shortlists s ON s.id = i.shortlist_id
+                    JOIN applications a ON a.id = i.application_id JOIN candidates c ON c.id = a.candidate_id JOIN stages st ON st.id = a.stage_id
+                    WHERE s.role_id = ? AND i.decision = 'shortlist' AND st.kind = 'active'", [$roleId])
+            : $db->all("SELECT DISTINCT a.id AS application_id, a.candidate_id, c.full_name FROM interviews v JOIN applications a ON a.id = v.application_id
+                    JOIN candidates c ON c.id = a.candidate_id JOIN stages st ON st.id = a.stage_id
+                    WHERE a.role_id = ? AND v.round = ? AND v.status = 'done' AND v.outcome = 'next_round' AND st.kind = 'active'", [$roleId, $round - 1]);
+        $out = [];
+        foreach ($rows as $r) {
+            $c = $db->one('SELECT * FROM candidates WHERE id = ?', [$r['candidate_id']]);
+            if (!$c || !$c['email'] || !Contact::canPutForward($c)) {
+                continue;
+            }
+            if ($db->col("SELECT 1 FROM interviews WHERE application_id = ? AND round = ? AND status IN ('choosing','booked','done')", [$r['application_id'], $round])) {
+                continue;
+            }
+            $out[] = ['application_id' => (int) $r['application_id'], 'candidate_id' => (int) $r['candidate_id'], 'full_name' => (string) $r['full_name']];
+        }
+        usort($out, fn ($x, $y) => strcasecmp($x['full_name'], $y['full_name']));
+        return $out;
     }
 
     // ---------------------------------------------------------------- inviting and booking
@@ -265,6 +306,11 @@ final class Interviews
             return [false, 'Add the interview address, or set a default on the client.', 0];
         }
         $at = date('Y-m-d H:i:00', $ts);
+        // Already booked for this round: that's a change of time, not a new interview (20 Nov 2026, Deepa Rani).
+        if ($existing = $this->bookedFor($applicationId, max(1, $round))) {
+            [$ok, $msg] = $this->reschedule((int) $existing['id'], $when, $duration, $kind, $details, null, $userId);
+            return [$ok, $msg, $ok ? (int) $existing['id'] : 0];
+        }
         if ($x = $this->clashAt((int) $a['client_id'], $at, max(15, min(240, $duration)))) {
             return [false, 'That time is already booked with this client: ' . $x['full_name'] . ' (' . $x['title'] . ') at ' . date('j M, g:i A', strtotime($x['starts_at'])) . '. Choose another time.', 0];
         }
@@ -312,6 +358,100 @@ final class Interviews
             $this->confirmed((int) $iv['id'], (int) $iv['created_by']);
             return [true, 'Booked.'];
         });
+    }
+
+    /**
+     * Moves a booked interview to another time, keeping its round (20 Nov 2026: last-minute changes are common). The
+     * candidate gets a fresh call letter marked "rescheduled", the client is told straight away (old and new time), and
+     * the calendar invite replaces the earlier entry. $round: to correct a wrongly numbered round; null keeps it.
+     * Returns [ok, message].
+     */
+    public function reschedule(int $id, string $when, int $duration, string $kind, array $details, ?int $round, int $userId): array
+    {
+        $db = $this->app->db;
+        $iv = $db->one('SELECT * FROM interviews WHERE id = ?', [$id]);
+        if (!$iv || $iv['status'] !== 'booked') {
+            return [false, 'Only a booked interview can be moved. Invite or book a new one instead.'];
+        }
+        $a = $this->application((int) $iv['application_id']);
+        $ts = strtotime(str_replace('T', ' ', $when));
+        if (!$a || !$ts || $ts < time() - 3600) {
+            return [false, 'Choose a date and time in the future.'];
+        }
+        $kind = isset(self::KINDS[$kind]) ? $kind : (string) $iv['kind'];
+        $c = $db->one('SELECT * FROM clients WHERE id = ?', [$a['client_id']]) ?: [];
+        $link = trim((string) ($details['meeting_link'] ?? '')) ?: ((string) $iv['meeting_link'] ?: (string) ($c['meeting_link'] ?? ''));
+        $address = trim((string) ($details['address'] ?? '')) ?: ((string) $iv['address'] ?: (string) ($c['interview_address'] ?? ''));
+        $maps = trim((string) ($details['maps_url'] ?? '')) ?: ((string) $iv['maps_url'] ?: (string) ($c['maps_url'] ?? ''));
+        if ($kind === 'virtual' && $link === '') {
+            return [false, 'Add the meeting link (Google Meet or Teams), or set a default on the client.'];
+        }
+        if ($kind === 'in_person' && $address === '') {
+            return [false, 'Add the interview address, or set a default on the client.'];
+        }
+        $minutes = max(15, min(240, $duration ?: (int) $iv['duration_min']));
+        $at = date('Y-m-d H:i:00', $ts);
+        if ($x = $this->clashAt((int) $a['client_id'], $at, $minutes, $id)) {
+            return [false, 'That time is already booked with this client: ' . $x['full_name'] . ' (' . $x['title'] . ') at ' . date('j M, g:i A', strtotime($x['starts_at'])) . '. Choose another time.'];
+        }
+        $oldRound = (int) $iv['round'];
+        $round = $round !== null ? max(1, min(9, $round)) : $oldRound;
+        $oldWhen = date('l j F, g:i A', strtotime((string) $iv['starts_at']));
+        $newWhen = date('l j F, g:i A', $ts);
+        $now = date('Y-m-d H:i:s');
+        $db->run('UPDATE interview_slots SET interview_id = NULL WHERE interview_id = ?', [$id]);
+        $db->update('interviews', ['round' => $round, 'kind' => $kind, 'starts_at' => $at, 'duration_min' => $minutes,
+            'meeting_link' => $kind === 'virtual' ? $this->url($link) : null, 'address' => $kind === 'in_person' ? $address : null,
+            'maps_url' => $kind === 'in_person' && $maps !== '' ? $this->url($maps) : null,
+            'reminded_at' => null, 'reschedules' => (int) $iv['reschedules'] + 1, 'rescheduled_at' => $now,
+            'letter_sent_at' => $now, 'client_notified_at' => $now], $id);
+        // A client time at the new hour is taken by this interview, as a pick would take it.
+        $db->run('UPDATE interview_slots SET interview_id = ? WHERE role_id = ? AND round = ? AND starts_at = ? AND interview_id IS NULL LIMIT 1', [$id, $a['role_id'], $round, $at]);
+        $iv = $db->one('SELECT * FROM interviews WHERE id = ?', [$id]);
+        $u = $this->sender($userId);
+        $first = $this->firstName($a);
+        $p = $this->confirmation($iv, $a);
+        $p['eyebrow'] = 'Interview rescheduled';
+        $p['headline'] = $first !== '' ? "Your interview has moved, $first." : 'Your interview has moved.';
+        $p['sub'] = 'Your ' . self::HOW[$kind] . ' interview with ' . $a['client_display'] . ' for ' . self::roleLine($a) . " is now on $newWhen (it was $oldWhen).";
+        $p['preheader'] = "New time: $newWhen.";
+        $emailId = $this->designed('interview', $a, 'Interview rescheduled: ' . $a['title'] . ' with ' . $a['client_display'] . ', ' . date('j M Y, g:i A', $ts),
+            $p, $u, ['interview' => $id, 'rescheduled' => true], $this->attachmentsFor($iv, $a), 10, $userId);
+        $db->run('UPDATE interviews SET letter_email_id = ? WHERE id = ?', [$emailId, $id]);
+        $told = '';
+        $contact = $db->one('SELECT name, email FROM client_contacts WHERE client_id = ? AND email IS NOT NULL ORDER BY id LIMIT 1', [$a['client_id']]);
+        if ($contact) {
+            $cfirst = trim((string) strtok((string) $contact['name'], ' '));
+            $where = $kind === 'virtual' ? "Online: {$iv['meeting_link']}" : ($kind === 'in_person' ? 'In person at: ' . one_line($iv['address']) : 'By phone');
+            $fix = $round !== $oldRound ? " (please note this is round $round, not round $oldRound as in our earlier email)" : '';
+            $body = ($cfirst !== '' ? "$cfirst," : 'Hello,') . "\n\nPlease note that the round $round interview with {$a['full_name']} (" . ref_candidate($a['candidate_id']) . ") for the {$a['title']} position has been rescheduled$fix:\n\n"
+                . "Was: $oldWhen\nNow: " . $this->when($iv) . "\n$where\n\nThe updated calendar invite is attached and replaces the earlier one.";
+            $this->queue('client_interview', ['email' => $contact['email'], 'full_name' => $contact['name'], 'candidate_id' => null], "Interview rescheduled: {$a['full_name']}, {$a['title']}, " . date('j M, g:i A', $ts),
+                $body, $u, ['interview' => $id, 'rescheduled' => true], [['ics' => $this->ics($iv, $a, true), 'name' => 'Interview.ics']], 12, $userId);
+            $told = ' and ' . $contact['name'] . ' at the client';
+        }
+        $db->insert('notes', ['entity_type' => 'candidate', 'entity_id' => $a['candidate_id'], 'user_id' => $userId ?: null,
+            'body' => "Round $round interview (" . ref_interview($id) . ") moved from $oldWhen to $newWhen" . ($round !== $oldRound ? " (round corrected from $oldRound)" : '') . '.']);
+        Audit::log('interview_rescheduled', 'candidate', (int) $a['candidate_id'], ['interview' => $id, 'from' => $oldWhen, 'to' => $at, 'round' => $round]);
+        return [true, 'Moved to ' . date('D j M, g:i A', $ts) . '. The new call letter is on its way to ' . $a['full_name'] . $told . '.'];
+    }
+
+    /**
+     * A booked candidate chooses again from the client's open times (e.g. the client sent new times): the booking is
+     * cancelled (the client is told), and the candidate gets a link to choose, for the same round. Returns [ok, message].
+     */
+    public function chooseAgain(int $id, int $userId): array
+    {
+        $iv = $this->app->db->one('SELECT * FROM interviews WHERE id = ?', [$id]);
+        if (!$iv || $iv['status'] !== 'booked') {
+            return [false, 'Only a booked interview can be re-offered.'];
+        }
+        $a = $this->application((int) $iv['application_id']);
+        if (!$a || !$this->openSlots((int) $a['role_id'], (int) $iv['round'])) {
+            return [false, 'There are no open round ' . (int) $iv['round'] . ' times to choose from. Add the client\'s new times first, or use Change the time.'];
+        }
+        $this->cancel($id, $userId, false, true, 'the candidate will choose a new time');
+        return $this->invite((int) $iv['application_id'], (int) $iv['round'], $userId);
     }
 
     /** The candidate says none of the times work: tell whoever sent the link. */
@@ -625,7 +765,7 @@ final class Interviews
         $desc = $iv['kind'] === 'virtual' ? "Join: {$iv['meeting_link']}" : ($iv['kind'] === 'in_person' ? 'Address: ' . $where . ($iv['maps_url'] ? "\nMap: {$iv['maps_url']}" : '') : 'Phone interview');
         $host = parse_url((string) ($this->app->config['app']['url'] ?? 'https://recruit.eshcolglobal.com'), PHP_URL_HOST) ?: 'recruit.eshcolglobal.com';
         $lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Eshcol Global//Eshcol Recruit//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
-            'UID:iv-' . (int) $iv['id'] . ($forClient ? '-c' : '') . '@' . $host, 'DTSTAMP:' . gmdate('Ymd\THis\Z'),
+            'UID:iv-' . (int) $iv['id'] . ($forClient ? '-c' : '') . '@' . $host, 'SEQUENCE:' . (int) ($iv['reschedules'] ?? 0), 'DTSTAMP:' . gmdate('Ymd\THis\Z'),
             'DTSTART:' . gmdate('Ymd\THis\Z', $start), 'DTEND:' . gmdate('Ymd\THis\Z', $end),
             'SUMMARY:' . $esc($what), 'LOCATION:' . $esc($where), 'DESCRIPTION:' . $esc($desc . "\n\nArranged by Eshcol Global, " . ref_interview($iv['id']))];
         if ($iv['kind'] === 'virtual' && $iv['meeting_link']) {
@@ -704,11 +844,48 @@ final class Interviews
         return $note;
     }
 
-    public function cancel(int $id, int $userId): void
+    /**
+     * Cancels an interview and frees its time. For a booked one, the candidate and/or the client can be told by email
+     * (20 Nov 2026; before, a cancellation told nobody). Returns who was told, for the confirmation.
+     */
+    public function cancel(int $id, int $userId, bool $tellCandidate = false, bool $tellClient = false, string $reason = ''): string
     {
-        $this->app->db->run("UPDATE interviews SET status = 'cancelled' WHERE id = ?", [$id]);
-        $this->app->db->run('UPDATE interview_slots SET interview_id = NULL WHERE interview_id = ?', [$id]);
+        $db = $this->app->db;
+        $iv = $db->one('SELECT * FROM interviews WHERE id = ?', [$id]);
+        $db->run("UPDATE interviews SET status = 'cancelled' WHERE id = ?", [$id]);
+        $db->run('UPDATE interview_slots SET interview_id = NULL WHERE interview_id = ?', [$id]);
         Audit::log('interview_cancelled', 'interview', $id);
+        if (!$iv || $iv['status'] !== 'booked' || !$iv['starts_at']) {
+            return '';
+        }
+        $a = $this->application((int) $iv['application_id']);
+        if (!$a) {
+            return '';
+        }
+        $u = $this->sender($userId);
+        $whenTxt = date('l j F, g:i A', strtotime((string) $iv['starts_at']));
+        $reason = trim($reason);
+        $told = [];
+        if ($tellCandidate && $a['email'] && !Contact::silenced($a)) {
+            $first = $this->firstName($a);
+            $body = ($first !== '' ? "Dear $first," : 'Dear Candidate,') . "\n\nI'm writing to let you know that your round {$iv['round']} interview with {$a['client_display']} for " . self::roleLine($a)
+                . ", on $whenTxt, has been cancelled" . ($reason !== '' ? ": $reason." : '.') . "\n\nI'll be in touch with you about the next step.";
+            $this->queue('interview', ['email' => $a['email'], 'full_name' => $a['full_name'], 'candidate_id' => $a['candidate_id']],
+                "Interview cancelled: {$a['title']}, " . date('j M, g:i A', strtotime((string) $iv['starts_at'])), $body, $u, ['interview' => $id, 'cancelled' => true], [], 10, $userId);
+            $told[] = $a['full_name'];
+        }
+        $contact = $tellClient ? $db->one('SELECT name, email FROM client_contacts WHERE client_id = ? AND email IS NOT NULL ORDER BY id LIMIT 1', [$a['client_id']]) : null;
+        if ($contact) {
+            $cfirst = trim((string) strtok((string) $contact['name'], ' '));
+            $body = ($cfirst !== '' ? "$cfirst," : 'Hello,') . "\n\nPlease note that the round {$iv['round']} interview with {$a['full_name']} (" . ref_candidate($a['candidate_id']) . ") for the {$a['title']} position, on $whenTxt, has been cancelled"
+                . ($reason !== '' ? ": $reason." : '.') . " Please remove it from your calendar; I'll be in touch.";
+            $this->queue('client_interview', ['email' => $contact['email'], 'full_name' => $contact['name'], 'candidate_id' => null],
+                "Interview cancelled: {$a['full_name']}, {$a['title']}, " . date('j M, g:i A', strtotime((string) $iv['starts_at'])), $body, $u, ['interview' => $id, 'cancelled' => true], [], 12, $userId);
+            $told[] = $contact['name'] . ' at the client';
+        }
+        $db->insert('notes', ['entity_type' => 'candidate', 'entity_id' => $a['candidate_id'], 'user_id' => $userId ?: null,
+            'body' => "Round {$iv['round']} interview (" . ref_interview($id) . ") on $whenTxt cancelled" . ($reason !== '' ? ": $reason" : '') . ($told ? '. Told: ' . implode(' and ', $told) : '') . '.']);
+        return $told ? 'Told: ' . implode(' and ', $told) . '.' : '';
     }
 
     // ---------------------------------------------------------------- lookups

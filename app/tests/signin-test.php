@@ -47,6 +47,8 @@ $check('a sign-in on a trusted device now lasts 7 days', Http::TRUSTED_SESSION =
 $check('the trusted-device mark lasts 7 days too', Auth::TRUST_DAYS === 7);
 $db->run('DELETE FROM settings WHERE k = ?', [$key]);
 $check('a trusted sign-in from 6 days ago is still signed in', $load(['uid' => $uid, 'login_at' => time() - 6 * 86400, 'trusted' => true]) === 'in');
+$check('"Trust this device" is ticked by default (20 Nov 2026: left unticked, the phone asked for the code every time)',
+    (bool) preg_match('/name="trust" value="1" checked/', (string) file_get_contents(dirname(__DIR__) . '/views/auth/code.php')));
 
 echo "\n\"Forget devices\" ends the other sign-ins\n";
 $_SESSION = ['uid' => $uid, 'login_at' => time() - 3 * 86400, 'trusted' => true];

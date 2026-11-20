@@ -97,6 +97,7 @@ $router->post('/applications/{id}/reference', [\Eshcol\Ats\Controllers\DecisionC
 $router->post('/applications/{id}/offer', [\Eshcol\Ats\Controllers\DecisionController::class, 'offer']);
 $router->post('/applications/{id}/joining', [\Eshcol\Ats\Controllers\DecisionController::class, 'joining']);
 $router->post('/candidates/{id}/unreliable', [CandidateController::class, 'unreliable']);
+$router->post('/candidates/{id}/red-list', [CandidateController::class, 'redList']);
 $router->post('/candidates/{id}/roles', [CandidateController::class, 'addToRole']);
 $router->post('/candidates/{id}/ai', [AiController::class, 'analyse']);
 $router->post('/candidates/{id}/delete', [CandidateController::class, 'destroy']);
@@ -165,6 +166,8 @@ $router->post('/applications/{id}/interview/invite', [\Eshcol\Ats\Controllers\In
 $router->post('/applications/{id}/interview/book', [\Eshcol\Ats\Controllers\InterviewController::class, 'book']);
 $router->post('/interviews/{id}/outcome', [\Eshcol\Ats\Controllers\InterviewController::class, 'outcome']);
 $router->post('/interviews/{id}/cancel', [\Eshcol\Ats\Controllers\InterviewController::class, 'cancel']);
+$router->post('/interviews/{id}/reschedule', [\Eshcol\Ats\Controllers\InterviewController::class, 'reschedule']);
+$router->post('/interviews/{id}/choose-again', [\Eshcol\Ats\Controllers\InterviewController::class, 'chooseAgain']);
 $router->get('/interviews/{id}/letter', [\Eshcol\Ats\Controllers\InterviewController::class, 'letter']);
 $router->get('/i/{token}', [\Eshcol\Ats\Controllers\InterviewController::class, 'choose'], public: true);
 $router->post('/i/{token}', [\Eshcol\Ats\Controllers\InterviewController::class, 'pick'], public: true);

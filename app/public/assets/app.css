@@ -345,6 +345,15 @@ tr.short > td:first-child { box-shadow: inset 5px 0 0 var(--green); }
 .iv-row { display: flex; gap: 12px; align-items: flex-start; padding: 9px 0; border-top: 1px solid var(--line); }
 .iv-row:first-of-type { border-top: 0; }
 .iv-when { min-width: 74px; font-size: 12.5px; color: var(--aubergine); line-height: 1.35; }
+/* Change time / choose again / result / cancel as visible buttons, easy to tap on a phone (20 Nov 2026). */
+.iv-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: flex-start; }
+.iv-act > summary { list-style: none; cursor: pointer; }
+.iv-act > summary::-webkit-details-marker { display: none; }
+.iv-act[open] { flex-basis: 100%; }
+.iv-act[open] > summary { margin-bottom: 6px; }
+.iv-next { border-top: 1px solid var(--line); margin-top: 4px; }
+.iv-ready { list-style: none; margin: 6px 0 10px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.iv-ready label { font-weight: normal; font-size: 13.5px; }
 .slot-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .slot-chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid #DCCDF0; background: #F7F3FC; color: var(--plum); border-radius: 999px; padding: 3px 10px; font-size: 12.5px; }
 .slot-chip.taken { background: var(--green-tint); border-color: #CDE8D5; color: var(--green); }

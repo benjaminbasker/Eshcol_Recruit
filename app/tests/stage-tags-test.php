@@ -62,6 +62,8 @@ $apps = [
     ['id' => 6, 'candidate_id' => 16, 'full_name' => 'Fathima', 'stage_kind' => 'active', 'eff_score' => 50],
     ['id' => 7, 'candidate_id' => 17, 'full_name' => 'Gopi', 'stage_kind' => 'hold', 'eff_score' => 40],
     ['id' => 8, 'candidate_id' => 18, 'full_name' => 'Hari', 'stage_kind' => 'active', 'eff_score' => 99],
+    ['id' => 9, 'candidate_id' => 19, 'full_name' => 'Indira', 'stage_kind' => 'active', 'eff_score' => 85, 'unreliable_at' => '2026-11-10'],
+    ['id' => 10, 'candidate_id' => 20, 'full_name' => 'Jaswant', 'stage_kind' => 'active', 'eff_score' => 85, 'red_listed_at' => '2026-11-10'],
 ];
 $kf = [
     11 => ['responded' => 'answered'],
@@ -72,6 +74,8 @@ $kf = [
     16 => ['responded' => null, 'msg_out' => '2026-11-16 10:00:00'],  // we wrote, no answer
     17 => ['responded' => 'asked'],                                   // Future requirement: left out
     18 => ['responded' => 'answered'],                                // keyword 99, Claude hasn't assessed
+    19 => ['responded' => 'answered'],                                // unreliable: left out (18 Nov 2026)
+    20 => ['responded' => 'answered'],                                // red-listed: left out (18 Nov 2026)
 ];
 $fitRows = [1 => ['status' => 'done', 'score' => 70], 2 => ['status' => 'done', 'score' => 88], 3 => ['status' => 'batched', 'score' => null]];
 $L = KF::replyLists($apps, $kf, $fitRows);
@@ -82,6 +86,10 @@ $check('…the keyword score where Claude hasn\'t finished (Chitra 70)', KF::ran
 $check('yet to respond: asked or written to, no answer', array_column($L['waiting'], 'full_name') === ['Ezhil', 'Fathima']);
 $check('closed stages left out and counted', $L['closed'] === ['responded' => 1, 'waiting' => 1]);
 $check('someone never asked is in neither', !in_array('Zz', array_column(array_merge($L['responded'], $L['waiting']), 'full_name'), true));
+$check('unreliable or red-listed: left out even though they answered, and not counted as closed either (18 Nov 2026)',
+    !in_array('Indira', array_column(array_merge($L['responded'], $L['waiting']), 'full_name'), true)
+    && !in_array('Jaswant', array_column(array_merge($L['responded'], $L['waiting']), 'full_name'), true)
+    && $L['closed'] === ['responded' => 1, 'waiting' => 1]);
 
 // 17 Nov 2026 (Baliram): details typed in after a call, or shortlisted, also count as responded.
 $apps2 = [

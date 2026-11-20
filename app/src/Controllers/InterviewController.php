@@ -47,22 +47,50 @@ final class InterviewController extends Controller
         Http::redirect($this->back("/candidates/{$a['candidate_id']}#interviews"));
     }
 
-    /** Invites everyone the client marked "Shortlist" on a role to choose a time. */
+    /**
+     * One click invites everyone ready for a round to choose a time (20 Nov 2026): round 1, those the client marked
+     * "Shortlist"; later rounds, those through the previous one. Only the ones still ticked are invited.
+     */
     public function inviteShortlisted(int $roleId): never
     {
         $svc = new Interviews($this->app);
-        $round = max(1, (int) ($_POST['round'] ?? 1));
-        $apps = $this->db->all("SELECT DISTINCT i.application_id FROM shortlist_items i JOIN shortlists s ON s.id = i.shortlist_id
-                                WHERE s.role_id = ? AND i.decision = 'shortlist'
-                                  AND NOT EXISTS (SELECT 1 FROM interviews v WHERE v.application_id = i.application_id AND v.round = ? AND v.status IN ('choosing','booked','done'))", [$roleId, $round]);
+        $round = max(1, min(9, (int) ($_POST['round'] ?? 1)));
+        $ready = $svc->readyFor($roleId, $round);
+        $ticked = isset($_POST['apps']) ? array_map('intval', (array) $_POST['apps']) : null;
         $sent = 0;
         $last = '';
-        foreach ($apps as $a) {
-            [$ok, $last] = $svc->invite((int) $a['application_id'], $round, (int) Auth::user()['id']);
+        foreach ($ready as $r) {
+            if ($ticked !== null && !in_array($r['application_id'], $ticked, true)) {
+                continue;
+            }
+            [$ok, $last] = $svc->invite($r['application_id'], $round, (int) Auth::user()['id']);
             $sent += $ok ? 1 : 0;
         }
-        Http::flash($sent ? 'ok' : 'info', $sent ? "Sent to $sent candidate" . ($sent === 1 ? '' : 's') . '. Each can now choose a time.' : ($apps ? $last : 'Nobody to invite: no one the client shortlisted is waiting for this round.'));
-        Http::redirect("/roles/$roleId#interviews");
+        Http::flash($sent ? 'ok' : 'info', $sent ? "Round $round invitations sent to $sent candidate" . ($sent === 1 ? '' : 's') . '. Each can now choose a time.'
+            : ($last !== '' ? $last : "Nobody to invite for round $round."));
+        Http::redirect($this->back("/roles/$roleId#interviews"));
+    }
+
+    /** Moves a booked interview to another time, same round; the candidate and client are emailed. */
+    public function reschedule(int $id): never
+    {
+        $iv = $this->db->one('SELECT i.*, a.candidate_id FROM interviews i JOIN applications a ON a.id = i.application_id WHERE i.id = ?', [$id]);
+        $iv || Http::abort(404);
+        $round = isset($_POST['round']) && $_POST['round'] !== '' ? (int) $_POST['round'] : null;
+        [$ok, $msg] = (new Interviews($this->app))->reschedule($id, (string) ($_POST['when'] ?? ''), (int) ($_POST['duration'] ?? 0), (string) ($_POST['kind'] ?? ''),
+            ['meeting_link' => $_POST['meeting_link'] ?? '', 'address' => $_POST['address'] ?? '', 'maps_url' => $_POST['maps_url'] ?? ''], $round, (int) Auth::user()['id']);
+        Http::flash($ok ? 'ok' : 'error', $msg);
+        Http::redirect($this->back("/candidates/{$iv['candidate_id']}#interviews"));
+    }
+
+    /** Cancels a booking and sends the candidate a link to choose another of the client's times, same round. */
+    public function chooseAgain(int $id): never
+    {
+        $iv = $this->db->one('SELECT i.*, a.candidate_id FROM interviews i JOIN applications a ON a.id = i.application_id WHERE i.id = ?', [$id]);
+        $iv || Http::abort(404);
+        [$ok, $msg] = (new Interviews($this->app))->chooseAgain($id, (int) Auth::user()['id']);
+        Http::flash($ok ? 'ok' : 'error', $msg);
+        Http::redirect($this->back("/candidates/{$iv['candidate_id']}#interviews"));
     }
 
     /** Books a time agreed on the phone, and sends the call letter. */
@@ -91,8 +119,8 @@ final class InterviewController extends Controller
     {
         $iv = $this->db->one('SELECT i.*, a.candidate_id FROM interviews i JOIN applications a ON a.id = i.application_id WHERE i.id = ?', [$id]);
         $iv || Http::abort(404);
-        (new Interviews($this->app))->cancel($id, (int) Auth::user()['id']);
-        Http::flash('ok', 'Interview cancelled' . ($iv['status'] === 'booked' ? '. Let the candidate and client know (WhatsApp or phone); the time is free again.' : '.'));
+        $told = (new Interviews($this->app))->cancel($id, (int) Auth::user()['id'], !empty($_POST['tell_candidate']), !empty($_POST['tell_client']), mb_substr(trim((string) ($_POST['reason'] ?? '')), 0, 300));
+        Http::flash('ok', 'Interview cancelled; the time is free again.' . ($told !== '' ? " $told" : ($iv['status'] === 'booked' ? ' Nobody was emailed.' : '')));
         Http::redirect($this->back("/candidates/{$iv['candidate_id']}#interviews"));
     }
 

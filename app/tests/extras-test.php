@@ -9,6 +9,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 
 use Eshcol\Ats\App;
 use Eshcol\Ats\Services\CandidateImporter;
+use Eshcol\Ats\Services\CandidateMessages;
 use Eshcol\Ats\Services\Digest;
 use Eshcol\Ats\Services\Matcher;
 use Eshcol\Ats\Services\Questionnaires;
@@ -98,4 +99,35 @@ $check('links point into the app', str_contains($html, "/roles/$role") && str_co
 $check('nothing unescaped from candidate data', !preg_match('/<script/i', $html));
 $n = (new Digest($app))->send();
 $check('queued for every owner', $n >= 1 && (int) $db->col("SELECT COUNT(*) FROM email_queue WHERE kind = 'digest' AND id > ?", [$maxEmail]) === $n);
+
+echo "\nOne-click nudge to someone who hasn't responded (18 Nov 2026)\n";
+@mkdir($app->storage('docs'), 0750, true);
+$addDoc = function (string $type, int $owner, string $kind, string $name) use ($app, $db) {
+    $rel = 'docs/zz-' . bin2hex(random_bytes(6)) . '.pdf';
+    copy(dirname(__DIR__) . '/tests/fixtures/Priya_Ramanathan_CV.pdf', $app->storage($rel));
+    return $db->insert('documents', ['owner_type' => $type, 'owner_id' => $owner, 'kind' => $kind, 'original_name' => $name, 'storage_path' => $rel, 'mime' => 'application/pdf', 'size_bytes' => 1000]);
+};
+$addDoc('role', $role, 'jd', 'Accounts Officer JD.pdf');
+$addDoc('client', $clientId, 'company_profile', 'ZZ Extras brief.pdf');
+$msgSvc = new CandidateMessages($app);
+$docIds = $msgSvc->roleDocIds($role, $clientId);
+$check('both the JD and company profile are found', count($docIds) === 2);
+$db->run("UPDATE candidates SET channel = 'indeed' WHERE id = ?", [$w]);
+$roleRow = $db->one('SELECT r.*, c.name AS client FROM roles r JOIN clients c ON c.id = r.client_id WHERE r.id = ?', [$role]);
+$wasim = $db->one('SELECT * FROM candidates WHERE id = ?', [$w]);
+[$subj, $body] = CandidateMessages::openingNudge($wasim, $roleRow, 'Baner');
+$check('subject names the role, client and locality', str_contains($subj, "Accounts Officer $tag") && str_contains($subj, $roleRow['client']) && str_contains($subj, 'Baner'));
+$check('greets them by first name, says how they came to us, and asks for CTC/notice', str_starts_with($body, 'Dear Wasim,') && str_contains($body, 'through Indeed') && str_contains($body, 'current CTC, expected CTC, and the notice period'));
+$db->run("UPDATE candidates SET channel = NULL, source = '' WHERE id = ?", [$w]);
+$wasim2 = $db->one('SELECT * FROM candidates WHERE id = ?', [$w]);
+[, $body2] = CandidateMessages::openingNudge($wasim2, $roleRow, null);
+$check('no channel known and no locality: no "through X" phrase', !str_contains($body2, 'through'));
+$maxEmail2 = (int) $db->col('SELECT COALESCE(MAX(id), 0) FROM email_queue');
+$r2 = $msgSvc->send($w, $uid, $subj, $body, null, $docIds);
+$check('sent, with both documents attached', $r2['ok'] && str_contains($r2['message'], '2 files'));
+$sentRow = $db->one('SELECT * FROM email_queue WHERE id > ? AND candidate_id = ? ORDER BY id DESC LIMIT 1', [$maxEmail2, $w]);
+$check('the email carries the position and both attachments, with the LinkedIn button', $sentRow
+    && str_contains((string) $sentRow['html'], 'Accounts Officer')
+    && count(json_decode((string) $sentRow['meta'], true)['attachments'] ?? []) === 2
+    && str_contains((string) $sentRow['html'], 'LinkedIn'));
 exit(0);

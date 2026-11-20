@@ -71,6 +71,42 @@ final class StageMover
         return $msgs;
     }
 
+    /**
+     * A hard rejection ("Rejected: insufficient information") is a verdict on the person, not the role
+     * (Benjamin, 18 Nov 2026: profile won't help us at all, insufficient details, or an attitude problem).
+     * It red-lists them (kept off every future position, any client - see Contact::canPutForward) and
+     * closes every other OPEN application they have with any client, not just this one. An application
+     * already Shortlisted or further is left for you to decide, since a client may already be in process.
+     * Returns the messages to show.
+     */
+    public function redList(array $a, int $to, ?string $note, int $userId, bool $byOwner): array
+    {
+        if (!Stages::is($this->app, $to, Stages::REJECTED)) {
+            return [];
+        }
+        $db = $this->app->db;
+        $cand = $db->one('SELECT id, red_listed_at FROM candidates WHERE id = ?', [$a['candidate_id']]);
+        if (!$cand) {
+            return [];
+        }
+        if (!$cand['red_listed_at']) {
+            (new RedList($this->app))->mark((int) $cand['id'], (string) $note, $userId);
+        }
+        $why = mb_substr('Red-listed' . ($note !== null && trim($note) !== '' ? ': ' . trim($note) : ''), 0, 255);
+        $msgs = [];
+        foreach ($db->all("SELECT a.*, r.title FROM applications a JOIN roles r ON r.id = a.role_id JOIN stages s ON s.id = a.stage_id
+                WHERE a.candidate_id = ? AND a.id <> ? AND r.is_pool = 0 AND r.status IN ('open','on_hold') AND s.kind = 'active'",
+                [$a['candidate_id'], $a['id']]) as $other) {
+            if (Shortlists::isShortlisted($this->app, (int) $other['stage_id'])) {
+                $msgs[] = 'Also on ' . $other['title'] . ': already Shortlisted or further - decide that one yourself.';
+                continue;
+            }
+            $this->move($other, $to, $why, $userId, $byOwner);
+            $msgs[] = 'Also closed on ' . $other['title'] . ': red-listed.';
+        }
+        return $msgs;
+    }
+
     public function move(array $a, int $to, ?string $note, int $userId, bool $byOwner): array
     {
         $db = $this->app->db;

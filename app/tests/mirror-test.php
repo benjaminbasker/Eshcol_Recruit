@@ -89,6 +89,37 @@ $check('a closed stage on the other position stays as it is', $stageOf($m5) === 
 [$a6, $m6] = $person('Fathima');
 $check('Not suitable on one position changes nothing elsewhere', $move($a6, $ns, 'No GST') === [] && $stageOf($m6) === $applied);
 
+echo "\nA hard rejection red-lists them for every position, any client (18 Nov 2026)\n";
+$rejected = (int) Stages::id($app, Stages::REJECTED);
+if (!$rejected) {
+    echo "  (skipped: no 'Rejected: insufficient information' stage on this install)\n";
+} else {
+    $moveFull = function (int $appId, int $to, ?string $note = null) use ($db, $mover, $uid): array {
+        $a = $db->one('SELECT * FROM applications WHERE id = ?', [$appId]);
+        $mover->move($a, $to, $note, $uid, true);
+        return array_merge($mover->mirror($a, $to, $note, $uid, true), $mover->redList($a, $to, $note, $uid, true));
+    };
+    [$a7, $m7, $e7] = $person('Geeta');
+    $cid7 = end($made);
+    $msgs7 = $moveFull($a7, $rejected, 'Attitude problem on the call');
+    $check('the candidate is red-listed, with the reason', str_contains((string) $db->col('SELECT red_listed_reason FROM candidates WHERE id = ?', [$cid7]), 'Attitude problem'));
+    $check('…and every other OPEN application closes too, any client', $stageOf($m7) === $rejected && $stageOf($e7) === $rejected);
+    $check('…with a "red-listed" reason, not the mirror wording', str_contains($reasonOf($m7), 'Red-listed') && str_contains($reasonOf($e7), 'Red-listed'));
+    [$a8, $m8] = $person('Harini');
+    $db->run('UPDATE applications SET stage_id = ? WHERE id = ?', [$short, $m8]);
+    $msgs8 = $moveFull($a8, $rejected, 'Insufficient details');
+    $check('an application already Shortlisted or further is left for you to decide', $stageOf($m8) === $short && count(array_filter($msgs8, fn ($m) => str_contains($m, 'decide that one yourself'))) === 1);
+    [$a9] = $person('Imtiaz');
+    $moveFull($a9, $ns, 'No GST');
+    $check('Not suitable never red-lists (only the dedicated Rejected stage does)', !$db->col('SELECT red_listed_at FROM candidates WHERE id = ?', [end($made)]));
+    [$a10] = $person('Jyoti');
+    $moveFull($a10, $rejected, 'First reason');
+    $firstReason = (string) $db->col('SELECT red_listed_reason FROM candidates WHERE id = ?', [end($made)]);
+    $moveFull($a10, $applied); // back into play
+    $moveFull($a10, $rejected, 'Second reason');
+    $check('red-listing again keeps the first reason (set once)', (string) $db->col('SELECT red_listed_reason FROM candidates WHERE id = ?', [end($made)]) === $firstReason && $firstReason === 'First reason');
+}
+
 echo "\nBack to the same row after a stage change\n";
 $check('back to the list, at the row', CandidateController::backToRow('/roles/1?who=responded', 55, '/roles/1') === '/roles/1?who=responded#app-55');
 $check('an anchor the page had is replaced by the row', CandidateController::backToRow('/roles/1?view=list#tab-pipeline', 55, '/roles/1') === '/roles/1?view=list#app-55');
