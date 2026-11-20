@@ -404,3 +404,34 @@ function ago(?string $dt): string
         default => date('j M Y', strtotime($dt)),
     };
 }
+
+/**
+ * The app's colour themes (20 Nov 2026, Benjamin: each user picks their own). The key is stored in users.theme;
+ * the colours themselves live in app.css under body[data-theme=…]. Swatches: sidebar, main colour, two accents.
+ * Colours that carry a meaning (stage tags, green/amber/red) are the same in every theme, and everything that
+ * goes outside (client portal, emails, PDFs) always uses the Eshcol brand colours.
+ * @return array<string, array{0:string, 1:string, 2:list<string>}>
+ */
+function themes(): array
+{
+    return [
+        'eshcol' => ['Eshcol brand', 'Aubergine and grape with a citrus touch: the company colours.', ['#320A67', '#7946B2', '#B7D393', '#C8B6E6']],
+        'orchid' => ['Orchid & Citrus', 'Brighter orchid purple with soft pastel tiles.', ['#432164', '#7C3CBA', '#C7EF89', '#FFDAB9']],
+        'ocean' => ['Ocean & Coral', 'Deep teal with coral and sky accents.', ['#0A4A58', '#087D8B', '#FFCAAD', '#C4DCF7']],
+        'berry' => ['Berry & Mint', 'Warm berry with mint and peach accents.', ['#632C4C', '#AD3D68', '#C1E8D0', '#FBD4B5']],
+    ];
+}
+
+/** The signed-in user's theme key ('eshcol' when none is chosen, or before the update that adds it). */
+function user_theme(?array $user): string
+{
+    if (!$user) {
+        return 'eshcol';
+    }
+    try {
+        $t = (string) \Eshcol\Ats\App::get()->db->col('SELECT theme FROM users WHERE id = ?', [(int) $user['id']]);
+    } catch (\Throwable) {
+        $t = '';
+    }
+    return isset(themes()[$t]) ? $t : 'eshcol';
+}

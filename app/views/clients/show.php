@@ -41,8 +41,9 @@
           <?php if ($isOwner): ?>
             <form method="post" action="/clients/<?= (int) $client['id'] ?>/contacts/<?= (int) $p['id'] ?>/portal" class="actions" style="margin:4px 0 0"><?= csrf() ?>
               <?php if (!$has): ?><button class="btn ghost small" type="submit" name="action" value="invite"<?= $p['email'] ? '' : ' disabled title="Add their email address first"' ?>>Give portal access</button>
-              <?php else: ?><button class="btn ghost small" type="submit" name="action" value="invite">Send a fresh link</button>
+              <?php else: ?><button class="btn ghost small" type="submit" name="action" value="invite">Send the invitation again</button>
                 <button class="btn link small" type="submit" name="action" value="revoke" data-confirm-click="Take away <?= e($p['name']) ?>'s access to the client portal?">Remove access</button><?php endif; ?>
+              <button class="btn ghost small" type="submit" name="action" value="preview" formtarget="_blank" title="Opens the client portal in a new tab, as <?= e($p['name']) ?> sees it. Read-only: nothing you press there is saved."><?= icon('external', 'sm') ?>See what they see</button>
             </form>
           <?php endif; ?>
         <?php endif; ?></div>
@@ -56,7 +57,7 @@
           <button class="btn ghost small" type="submit">Add contact</button>
         </form>
       </details>
-      <p class="small muted" style="margin:10px 0 0"><b>Client portal:</b> a contact with access signs in at <a href="<?= e($portalUrl) ?>" target="_blank" rel="noopener"><?= e(preg_replace('#^https?://#', '', $portalUrl)) ?></a> with a link sent to their email (no password). They see this client's positions and the candidates you have sent in shortlists, give decisions, offer interview times and ask for new positions. Nothing else.</p>
+      <p class="small muted" style="margin:10px 0 0"><b>Client portal:</b> a contact with access signs in at <a href="<?= e($portalUrl) ?>" target="_blank" rel="noopener"><?= e(preg_replace('#^https?://#', '', $portalUrl)) ?></a> with their email address and a 6-digit code we email them (no password), and stay signed in for 30 days on their own device. "See what they see" opens it as that person, read-only. They see this client's positions and the candidates you have sent in shortlists, give decisions, offer interview times and ask for new positions. Nothing else.</p>
     </div>
     <div class="card sand">
       <h3>Commercials</h3>

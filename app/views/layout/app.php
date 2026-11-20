@@ -11,20 +11,21 @@ $openRoles = (int) $db->col("SELECT COUNT(*) FROM roles r WHERE r.status = 'open
 $unreadMsgs = (int) $db->col('SELECT COUNT(DISTINCT candidate_id) FROM candidate_messages WHERE read_at IS NULL');
 $isOwner = ($user['role'] ?? '') === 'owner';
 $isContractor = ($user['role'] ?? '') === 'contractor'; // sees only their own positions (B6, 14 Nov 2026)
+$theme = user_theme($user ?? null); // each user's own colours (20 Nov 2026)
 ?><!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="csrf" content="<?= e(\Eshcol\Ats\Http::csrfToken()) ?>">
-<meta name="theme-color" content="#2C0A57">
+<meta name="theme-color" content="<?= e(themes()[$theme][2][0]) ?>">
 <title><?= e(($title ?? '') ? $title . ' · ' : '') ?>Eshcol Recruit</title>
 <link rel="stylesheet" href="<?= asset('app.css') ?>">
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="<?= asset('favicon-32.png') ?>">
 <link rel="apple-touch-icon" href="<?= asset('apple-touch-icon.png') ?>">
 </head>
-<body>
+<body data-theme="<?= e($theme) ?>">
 <?php require __DIR__ . '/../partials/icons.php'; ?>
 <a href="#content" class="skip">Skip to content</a>
 <div class="shell" id="shell">

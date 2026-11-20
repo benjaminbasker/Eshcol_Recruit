@@ -34,7 +34,7 @@ final class Access
         'CategoryController::candidateSave' => 'candidate', 'CategoryController::candidateConfirm' => 'candidate', 'CategoryController::candidateNow' => 'candidate',
         'CandidateController::show' => 'candidate', 'CandidateController::whatsapp' => 'candidate', 'CandidateController::edit' => 'candidate',
         'CandidateController::update' => 'candidate', 'CandidateController::note' => 'candidate', 'CandidateController::preferredCv' => 'candidate',
-        'CandidateController::unreliable' => 'candidate', 'CandidateController::redList' => 'candidate', 'CandidateController::addToRole' => 'candidate', 'CandidateController::destroy' => 'candidate',
+        'CandidateController::unreliable' => 'candidate', 'CandidateController::redList' => 'candidate', 'CandidateController::liftClientRejection' => 'candidate', 'CandidateController::addToRole' => 'candidate', 'CandidateController::destroy' => 'candidate',
         'CandidateController::route' => 'candidate', 'CandidateController::detailsReviewed' => 'candidate', 'CandidateController::deleteView' => 'none',
         'CandidateController::downloadCv' => 'cv', 'CandidateController::saveCvText' => 'cv',
         'CandidateController::stage' => 'application', 'CandidateController::override' => 'application', 'CandidateController::reason' => 'application',

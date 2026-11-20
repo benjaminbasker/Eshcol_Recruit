@@ -25,7 +25,10 @@ final class ClientPortal
 {
     public const INVITE_DAYS = 7;
     public const LINK_MINUTES = 30;
-    public const SESSION_DAYS = 7;
+    public const SESSION_DAYS = 30; // Benjamin, 20 Nov 2026: stay signed in for 30 days on their own device
+    public const CODE_MINUTES = 10;
+    public const CODE_TRIES = 5;
+    public const PREVIEW_HOURS = 2;
     /** Interview lengths a client can choose, in minutes. */
     public const LENGTHS = [15, 20, 30, 45, 60];
     private const MAX_SLOTS = 40;
@@ -143,13 +146,96 @@ final class ClientPortal
         if ($db->run('UPDATE client_logins SET used_at = NOW() WHERE id = ? AND used_at IS NULL', [$c['login_id']])->rowCount() === 0) {
             return null; // used a moment ago
         }
+        return $this->startSession($c, $userAgent);
+    }
+
+    /** A new signed-in browser for a contact: returns the session token for the cookie (only its hash is stored). */
+    private function startSession(array $c, string $userAgent, ?int $previewBy = null): string
+    {
+        $db = $this->app->db;
         $session = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
         $db->run('DELETE FROM client_sessions WHERE expires_at < NOW()');
         $db->insert('client_sessions', ['contact_id' => $c['id'], 'token_hash' => hash('sha256', $session), 'label' => mb_substr(\Eshcol\Ats\Auth::deviceLabel($userAgent), 0, 190),
-            'last_seen_at' => date('Y-m-d H:i:s'), 'expires_at' => date('Y-m-d H:i:s', time() + self::SESSION_DAYS * 86400)]);
-        $db->run('UPDATE client_contacts SET portal_last_login_at = NOW() WHERE id = ?', [$c['id']]);
-        Audit::log('portal_signed_in', 'client', (int) $c['client_id'], ['contact' => (int) $c['id']]);
+            'last_seen_at' => date('Y-m-d H:i:s'), 'preview_by' => $previewBy,
+            'expires_at' => date('Y-m-d H:i:s', time() + ($previewBy ? self::PREVIEW_HOURS * 3600 : self::SESSION_DAYS * 86400))]);
+        if ($previewBy) {
+            Audit::log('portal_previewed', 'client', (int) $c['client_id'], ['contact' => (int) $c['id']]);
+        } else {
+            $db->run('UPDATE client_contacts SET portal_last_login_at = NOW() WHERE id = ?', [$c['id']]);
+            Audit::log('portal_signed_in', 'client', (int) $c['client_id'], ['contact' => (int) $c['id']]);
+        }
         return $session;
+    }
+
+    // ---------------------------------------------------------------- signing in with a code (20 Nov 2026)
+
+    /**
+     * "Email me a code": a 6-digit code to the contact's email, good for 10 minutes and 5 tries. Says nothing about
+     * whether the address is known (the page looks the same either way). At most 3 codes per contact in 15 minutes.
+     */
+    public function requestCode(string $email, ?string $ip): bool
+    {
+        $db = $this->app->db;
+        $c = $this->contactByEmail($email);
+        if (!$c) {
+            return false;
+        }
+        if ((int) $db->col('SELECT COUNT(*) FROM client_logins WHERE contact_id = ? AND created_at > NOW() - INTERVAL 15 MINUTE', [$c['id']]) >= 3) {
+            return false;
+        }
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $db->run('DELETE FROM client_logins WHERE expires_at < NOW() - INTERVAL 7 DAY');
+        // A new code replaces any earlier one still waiting.
+        $db->run("UPDATE client_logins SET used_at = NOW() WHERE contact_id = ? AND purpose = 'code' AND used_at IS NULL", [$c['id']]);
+        $db->insert('client_logins', ['contact_id' => $c['id'], 'token_hash' => self::codeHash((int) $c['id'], $code), 'purpose' => 'code', 'ip' => $ip,
+            'expires_at' => date('Y-m-d H:i:s', time() + self::CODE_MINUTES * 60)]);
+        $this->emailCode($c, $code);
+        return true;
+    }
+
+    /** Checks a code: returns a session token for the cookie, or null (wrong, expired, used, or too many tries). */
+    public function verifyCode(string $email, string $code, string $userAgent = ''): ?string
+    {
+        $db = $this->app->db;
+        $code = (string) preg_replace('/\D/', '', $code);
+        $c = $this->contactByEmail($email);
+        if (!$c || strlen($code) !== 6) {
+            return null;
+        }
+        $l = $db->one("SELECT * FROM client_logins WHERE contact_id = ? AND purpose = 'code' AND used_at IS NULL AND expires_at > NOW() ORDER BY id DESC LIMIT 1", [$c['id']]);
+        if (!$l || (int) $l['attempts'] >= self::CODE_TRIES) {
+            return null;
+        }
+        $db->run('UPDATE client_logins SET attempts = attempts + 1 WHERE id = ?', [$l['id']]);
+        if (!hash_equals((string) $l['token_hash'], self::codeHash((int) $c['id'], $code))) {
+            return null;
+        }
+        if ($db->run('UPDATE client_logins SET used_at = NOW() WHERE id = ? AND used_at IS NULL', [$l['id']])->rowCount() === 0) {
+            return null;
+        }
+        return $this->startSession($c, $userAgent);
+    }
+
+    /** The owner looks at the portal as this contact sees it: a 2-hour, read-only session (nothing pressed is saved). */
+    public function previewSession(int $contactId, int $userId, string $userAgent = ''): ?string
+    {
+        $c = $this->contactRow($contactId);
+        return $c ? $this->startSession($c, $userAgent, $userId) : null;
+    }
+
+    private static function codeHash(int $contactId, string $code): string
+    {
+        return hash('sha256', "portal-code:$contactId:$code");
+    }
+
+    private function contactByEmail(string $email): ?array
+    {
+        $email = mb_strtolower(trim($email));
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return null;
+        }
+        $c = $this->app->db->one('SELECT cc.*, cl.name AS client, cl.is_active FROM client_contacts cc JOIN clients cl ON cl.id = cc.client_id WHERE cc.email = ? AND cc.portal_access = 1 LIMIT 1', [$email]);
+        return $c && $c['is_active'] ? $c : null;
     }
 
     /** The signed-in contact for a session cookie, with their client; null when not signed in. */
@@ -159,8 +245,8 @@ final class ClientPortal
             return null;
         }
         $db = $this->app->db;
-        $c = $db->one('SELECT cc.*, cl.name AS client, cl.logo_path, cl.logo_updated_at, s.id AS session_id FROM client_sessions s JOIN client_contacts cc ON cc.id = s.contact_id JOIN clients cl ON cl.id = cc.client_id
-            WHERE s.token_hash = ? AND s.expires_at > NOW() AND cc.portal_access = 1 AND cl.is_active = 1', [hash('sha256', $session)]);
+        $c = $db->one('SELECT cc.*, cl.name AS client, cl.logo_path, cl.logo_updated_at, s.id AS session_id, s.preview_by FROM client_sessions s JOIN client_contacts cc ON cc.id = s.contact_id JOIN clients cl ON cl.id = cc.client_id
+            WHERE s.token_hash = ? AND s.expires_at > NOW() AND (cc.portal_access = 1 OR s.preview_by IS NOT NULL) AND cl.is_active = 1', [hash('sha256', $session)]);
         if ($c) {
             $db->run('UPDATE client_sessions SET last_seen_at = NOW() WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < NOW() - INTERVAL 5 MINUTE)', [$c['session_id']]);
         }
@@ -487,6 +573,33 @@ final class ClientPortal
     }
 
     /** The invitation, or a sign-in link asked for on the sign-in page. */
+    /** The sign-in code email: the code large, so it can be read at a glance. */
+    private function emailCode(array $c, string $code): void
+    {
+        $u = $this->app->db->one("SELECT name, title, mobile, email, role FROM users WHERE role = 'owner' ORDER BY id LIMIT 1") ?: ['name' => 'Eshcol Global'];
+        $first = trim((string) strtok((string) $c['name'], ' '));
+        $esc = fn ($v) => htmlspecialchars((string) $v, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $font = 'font-family:Calibri, Arial, Helvetica, sans-serif; font-size:15px; line-height:22px; color:#222222;';
+        $intro = 'Here is your code to sign in to the Eshcol Global client portal for ' . $c['client'] . '. It works once, for the next ' . self::CODE_MINUTES . ' minutes.';
+        $small = 'If you did not ask for this, you can ignore this email: nobody can sign in without the code. Please do not share it.';
+        $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0; padding:16px; background:#FFFFFF;">'
+            . '<div style="' . $font . ' max-width:600px;">'
+            . '<p style="margin:0 0 14px 0;">' . ($first !== '' ? $esc($first) . ',' : 'Hello,') . '</p>'
+            . '<p style="margin:0 0 14px 0;">' . $esc($intro) . '</p>'
+            . '<p style="margin:8px 0 20px 0;"><span style="display:inline-block; padding:12px 22px; background:#F2ECFB; border:1px solid #C8B6E6; border-radius:8px; color:#320A67; font-family:Consolas, Courier New, monospace; font-size:30px; line-height:36px; font-weight:bold; letter-spacing:8px;">' . $esc($code) . '</span></p>'
+            . signature_html($u)
+            . '<p style="margin:22px 0 0 0; color:#8A8396; font-size:12px; line-height:17px;">' . $esc($small) . '</p></div></body></html>';
+        $text = ($first !== '' ? "$first," : 'Hello,') . "\n\n$intro\n\nYour code: $code\n\nRegards,\n" . implode("\n", signature_lines($u)) . "\n\n$small\n";
+        $mailer = new Mailer($this->app);
+        $id = $mailer->enqueue(['kind' => 'portal', 'to_email' => $c['email'], 'to_name' => $c['name'], 'subject' => "Your sign-in code: $code", 'html' => $html, 'text' => $text,
+            'priority' => 1, 'created_by' => null]);
+        // The code goes now, not in the next five-minute run.
+        $row = $this->app->db->one('SELECT * FROM email_queue WHERE id = ?', [$id]);
+        if ($row) {
+            $mailer->sendRow($row);
+        }
+    }
+
     private function emailLink(array $c, string $token, string $purpose, ?int $userId): void
     {
         $db = $this->app->db;
@@ -497,7 +610,7 @@ final class ClientPortal
         if ($purpose === 'invite') {
             $subject = 'Your Eshcol Global client portal';
             $paras = ["We have set up a client portal for {$c['client']}. In one place you can see every candidate we send you for each position, give your decision and comments, offer interview times, and ask us for new positions.",
-                'There is no password to remember. Press the button below to sign in; it works for ' . self::INVITE_DAYS . ' days. After that, enter your email address at ' . $this->url() . ' and we will email you a fresh link.'];
+                'There is no password to remember. Press the button below to sign in; it works for ' . self::INVITE_DAYS . ' days. After that, enter your email address at ' . $this->url() . ' and we will email you a 6-digit code to sign in with. You stay signed in for ' . self::SESSION_DAYS . ' days on your own computer or phone.'];
             $small = 'This link is personal to you: please do not forward it. Candidate profiles in the portal are shared in confidence.';
         } else {
             $subject = 'Your sign-in link for the Eshcol Global client portal';

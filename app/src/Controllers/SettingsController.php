@@ -467,6 +467,20 @@ final class SettingsController extends Controller
         Http::redirect('/account');
     }
 
+    /** Your own colour theme (20 Nov 2026): only you see it. */
+    public function saveTheme(): never
+    {
+        $u = Auth::user();
+        $t = (string) ($_POST['theme'] ?? '');
+        if (!isset(themes()[$t])) {
+            Http::flash('error', 'Choose one of the colour themes.');
+            Http::redirect('/account#colours');
+        }
+        $this->db->run('UPDATE users SET theme = ? WHERE id = ?', [$t === 'eshcol' ? null : $t, $u['id']]);
+        Http::flash('ok', 'Done: ' . themes()[$t][0] . ' is your colour theme now.');
+        Http::redirect('/account#colours');
+    }
+
     /** Your name, title and mobile, used in signatures on emails, CVs and call letters. */
     public function saveProfile(): never
     {

@@ -239,10 +239,12 @@ $router->get('/account', [SettingsController::class, 'account']);
 $router->post('/account/password', [SettingsController::class, 'changePassword']);
 $router->post('/account/devices/forget', [SettingsController::class, 'forgetDevices']);
 $router->post('/account/email', [SettingsController::class, 'changeEmail']);
+$router->post('/account/theme', [SettingsController::class, 'saveTheme']);
 
 // The client portal (13 Nov 2026): a client's contact signs in with an emailed link. Each route checks that sign-in itself.
 $router->get('/portal', [\Eshcol\Ats\Controllers\PortalController::class, 'home'], public: true);
 $router->post('/portal/link', [\Eshcol\Ats\Controllers\PortalController::class, 'link'], public: true);
+$router->post('/portal/code', [\Eshcol\Ats\Controllers\PortalController::class, 'code'], public: true);
 $router->get('/portal/in/{token}', [\Eshcol\Ats\Controllers\PortalController::class, 'open'], public: true);
 $router->post('/portal/in/{token}', [\Eshcol\Ats\Controllers\PortalController::class, 'enter'], public: true);
 $router->post('/portal/out', [\Eshcol\Ats\Controllers\PortalController::class, 'out'], public: true);

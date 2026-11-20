@@ -98,12 +98,19 @@ final class ClientController extends Controller
         $c = $this->db->one('SELECT * FROM client_contacts WHERE id = ? AND client_id = ?', [$cid, $id]);
         $c || Http::abort(404);
         $portal = new \Eshcol\Ats\Services\ClientPortal($this->app);
+        // "See what they see" (20 Nov 2026): a 2-hour, read-only look at the portal as this contact; nothing pressed there is saved.
+        if (($_POST['action'] ?? '') === 'preview') {
+            $session = $portal->previewSession($cid, (int) $u['id'], (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
+            $session || Http::abort(404);
+            setcookie(Http::cookieName($this->app, 'eshcol_cp_'), $session, ['expires' => time() + \Eshcol\Ats\Services\ClientPortal::PREVIEW_HOURS * 3600, 'path' => '/', 'secure' => !$this->app->isLocal(), 'httponly' => true, 'samesite' => 'Lax']);
+            Http::redirect('/portal');
+        }
         if (($_POST['action'] ?? '') === 'revoke') {
             $portal->revoke($cid);
             Http::flash('ok', $c['name'] . ' no longer has access to the client portal. Any sign-in of theirs has ended.');
         } else {
             $problem = $portal->invite($cid, (int) $u['id']);
-            Http::flash($problem ? 'error' : 'ok', $problem ?: 'Invitation sent to ' . $c['email'] . '. The link in it works for ' . \Eshcol\Ats\Services\ClientPortal::INVITE_DAYS . ' days; after that they ask for a fresh one on the sign-in page.');
+            Http::flash($problem ? 'error' : 'ok', $problem ?: 'Invitation sent to ' . $c['email'] . '. The link in it works for ' . \Eshcol\Ats\Services\ClientPortal::INVITE_DAYS . ' days; after that they sign in with their email and a 6-digit code we email them.');
         }
         Http::redirect("/clients/$id#portal");
     }

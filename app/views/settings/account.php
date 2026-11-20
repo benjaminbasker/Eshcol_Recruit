@@ -1,5 +1,22 @@
 <div class="page-head"><div><p class="eyebrow"><?= e($user['email']) ?></p><h1>Your account</h1></div></div>
 <?php $me = $me ?? \Eshcol\Ats\App::get()->db->one('SELECT name, title, mobile, email FROM users WHERE id = ?', [$user['id']]); ?>
+<?php $myTheme = user_theme($user); ?>
+<form method="post" action="/account/theme" class="card" id="colours" style="max-width:860px">
+  <?= csrf() ?>
+  <h2>Colours</h2>
+  <p class="small">Choose how Eshcol Recruit looks for you. Only you see your choice: everyone else keeps their own. Stage tags and green / amber / red keep the same meaning in every theme, and what clients and candidates see always stays in the Eshcol brand colours.</p>
+  <div class="theme-pick" role="radiogroup" aria-label="Colour theme">
+    <?php foreach (themes() as $key => [$label, $desc, $sw]): ?>
+      <label class="theme-opt">
+        <input type="radio" name="theme" value="<?= e($key) ?>"<?= $key === $myTheme ? ' checked' : '' ?>>
+        <span class="theme-sw" aria-hidden="true"><?php foreach ($sw as $c): ?><i style="background:<?= e($c) ?>"></i><?php endforeach; ?></span>
+        <b><?= e($label) ?><?= $key === 'eshcol' ? ' <span class="chip">Default</span>' : '' ?></b>
+        <small><?= e($desc) ?></small>
+      </label>
+    <?php endforeach; ?>
+  </div>
+  <button class="btn" type="submit" style="margin-top:14px">Use these colours</button>
+</form>
 <form method="post" action="/account/profile" class="card" style="max-width:520px">
   <?= csrf() ?>
   <h2>Your signature</h2>

@@ -58,16 +58,47 @@ final class PortalController extends Controller
     {
         $c = $this->svc()->contactBySession((string) ($_COOKIE[$this->cookie()] ?? ''));
         if (!$c) {
-            $this->page('portal/signin', ['title' => 'Client portal', 'me' => null, 'sent' => isset($_GET['sent']), 'ended' => isset($_GET['ended'])]);
+            $this->page('portal/signin', ['title' => 'Client portal', 'me' => null, 'sent' => false, 'ended' => isset($_GET['ended']), 'error' => null]);
         }
         $this->page('portal/home', ['title' => $c['client'] . ' · Client portal', 'me' => $c, 'roles' => $this->svc()->roles($c)]);
     }
 
-    /** "Email me a sign-in link": the same answer whether or not the address is known. */
+    /** "Email me a code" (20 Nov 2026): the same page whether or not the address is known. The address rides in the form, never the URL. */
     public function link(): never
     {
-        $this->svc()->requestLink((string) ($_POST['email'] ?? ''), Http::ip());
-        Http::redirect('/portal?sent=1');
+        $email = mb_strtolower(trim((string) ($_POST['email'] ?? '')));
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->page('portal/signin', ['title' => 'Client portal', 'me' => null, 'sent' => false, 'ended' => false, 'error' => 'Enter your email address.'], 422);
+        }
+        $this->svc()->requestCode($email, Http::ip());
+        $this->page('portal/code', ['title' => 'Client portal', 'me' => null, 'email' => $email, 'error' => null]);
+    }
+
+    /** The 6-digit code: right, and you are in for 30 days on this device. */
+    public function code(): never
+    {
+        $email = mb_strtolower(trim((string) ($_POST['email'] ?? '')));
+        $session = $this->svc()->verifyCode($email, (string) ($_POST['code'] ?? ''), (string) ($_SERVER['HTTP_USER_AGENT'] ?? ''));
+        if (!$session) {
+            $this->page('portal/code', ['title' => 'Client portal', 'me' => null, 'email' => $email,
+                'error' => 'That code is not right, or it has expired. Check the latest email from us, or ask for a new code.'], 422);
+        }
+        $this->setSession($session, ClientPortal::SESSION_DAYS * 86400);
+        Http::redirect('/portal');
+    }
+
+    private function setSession(string $session, int $seconds): void
+    {
+        setcookie($this->cookie(), $session, ['expires' => time() + $seconds, 'path' => '/', 'secure' => !$this->app->isLocal(), 'httponly' => true, 'samesite' => 'Lax']);
+    }
+
+    /** In a preview (the owner looking as the client), nothing is saved. */
+    private function notInPreview(array $me, string $back): void
+    {
+        if (!empty($me['preview_by'])) {
+            Http::flash('error', 'This is a preview of what your client sees: nothing you press here is saved.');
+            Http::redirect($back);
+        }
     }
 
     /** Opening the link shows a button; pressing it signs in (so an email scanner doesn't use the link up). */
@@ -87,7 +118,7 @@ final class PortalController extends Controller
         if (!$session) {
             Http::redirect('/portal/in/' . rawurlencode((string) $token));
         }
-        setcookie($this->cookie(), $session, ['expires' => time() + ClientPortal::SESSION_DAYS * 86400, 'path' => '/', 'secure' => !$this->app->isLocal(), 'httponly' => true, 'samesite' => 'Lax']);
+        $this->setSession($session, ClientPortal::SESSION_DAYS * 86400);
         Http::redirect('/portal');
     }
 
@@ -111,7 +142,9 @@ final class PortalController extends Controller
         $me = $this->me();
         $role = $this->roleOr404($me, $id);
         $svc = $this->svc();
-        $svc->markViewed($me, $id);
+        if (empty($me['preview_by'])) {
+            $svc->markViewed($me, $id);
+        }
         $this->page('portal/role', ['title' => $role['title'] . ' · Client portal', 'me' => $me, 'role' => $role, 'cands' => $svc->candidates($me, $id),
             'schedule' => $svc->schedule($me, $id)]);
     }
@@ -120,6 +153,7 @@ final class PortalController extends Controller
     {
         $me = $this->me();
         $this->roleOr404($me, $id);
+        $this->notInPreview($me, "/portal/roles/$id");
         $n = $this->svc()->saveDecisions($me, $id, $_POST);
         Http::flash('ok', $n ? "Thank you: your feedback on $n candidate" . ($n === 1 ? '' : 's') . ' has reached us. We will be in touch about next steps.' : 'Nothing was changed.');
         Http::redirect("/portal/roles/$id");
@@ -161,6 +195,7 @@ final class PortalController extends Controller
     {
         $me = $this->me();
         $this->roleOr404($me, $id);
+        $this->notInPreview($me, "/portal/roles/$id#times");
         [$n, $problem] = $this->svc()->offerTimes($me, $id, $_POST);
         Http::flash($n ? 'ok' : 'error', $n ? "Thank you: $n interview time" . ($n === 1 ? ' is' : 's are') . ' with us. We will offer ' . ($n === 1 ? 'it' : 'them') . ' to the candidates you shortlist and confirm each interview with you.' : $problem);
         Http::redirect("/portal/roles/$id#times");
@@ -169,6 +204,7 @@ final class PortalController extends Controller
     public function removeSlot(int $slot): never
     {
         $me = $this->me();
+        $this->notInPreview($me, '/portal');
         $roleId = $this->svc()->removeSlot($me, $slot);
         if ($roleId === null) {
             Http::abort(404);
@@ -188,6 +224,7 @@ final class PortalController extends Controller
     public function newSave(): never
     {
         $me = $this->me();
+        $this->notInPreview($me, '/portal/new');
         $r = $this->svc()->requestPosition($me, $_POST);
         if (is_string($r)) {
             $this->page('portal/new', ['title' => 'Ask for a new position · Client portal', 'me' => $me, 'old' => $_POST, 'error' => $r], 422);
