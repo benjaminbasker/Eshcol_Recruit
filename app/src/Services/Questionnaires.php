@@ -36,9 +36,9 @@ final class Questionnaires
     private const PERSONAL = ['ctc_current' => 'ctc_current_lpa', 'ctc_expected' => 'ctc_expected_lpa', 'ctc_min' => 'ctc_min_lpa', 'notice' => 'notice_days'];
     /** Part 1 "Check your details": answer key => candidate column. Email and mobile are handled apart (they wait for approval). */
     private const DETAILS = ['full_name' => 'full_name', 'linkedin' => 'linkedin_url', 'location' => 'location', 'locality' => 'locality', 'current_company' => 'current_company',
-        'current_title' => 'current_title', 'experience' => 'exp_months', 'qualifications' => 'qualifications'];
+        'current_title' => 'current_title', 'experience' => 'exp_months', 'qualifications' => 'qualifications', 'district' => 'home_district'];
     /** Part 1 keys: kept with the answers, but not shown to clients (the shortlist shows the facts instead). */
-    public const DETAIL_KEYS = ['full_name', 'phone', 'email', 'linkedin', 'location', 'locality', 'current_company', 'current_title', 'experience', 'qualifications'];
+    public const DETAIL_KEYS = ['full_name', 'phone', 'email', 'linkedin', 'location', 'locality', 'district', 'current_company', 'current_title', 'experience', 'qualifications'];
     public const MAX_CUSTOM = 8;
     public const OPEN_ROLE = ['open', 'on_hold', 'draft'];
 
@@ -83,14 +83,31 @@ final class Questionnaires
             'hint' => 'Optional. For example linkedin.com/in/your-name.', 'prefill' => $cand['linkedin_url'] ?? null];
         $q[] = ['key' => 'location', 'part' => 1, 'kind' => 'text', 'prompt' => 'The city you live in now', 'required' => true, 'prefill' => $city ?: null];
         $q[] = ['key' => 'locality', 'part' => 1, 'kind' => 'text', 'prompt' => 'Your area or locality', 'required' => true,
-            'hint' => 'For example Wakad, Kharadi or Andheri. It helps us suggest roles that are easy for you to reach.',
+            'hint' => (array_filter($roles, fn ($r) => Regions::tiersOf($r) !== null) ? 'For example Ambattur, Avadi or Tambaram.' : 'For example Wakad, Kharadi or Andheri.')
+                . ' It helps us suggest roles that are easy for you to reach.',
             'prefill' => $cand['locality'] ?? null, 'suggest' => $this->localities($city ?: $roleCity)];
+        // A position by region, in tiers (21 Nov 2026): the district decides the tier, and a village name often isn't known.
+        $tiered = array_values(array_filter($roles, fn ($r) => Regions::tiersOf($r) !== null));
+        $branched = array_values(array_filter($roles, fn ($r) => EngineeringBranches::fromRole($r) !== []));
+        if ($tiered && Regions::ready($this->app)) {
+            $opts = array_merge(Regions::TN_DISTRICTS, Regions::OTHER_STATES, [Regions::ANOTHER_STATE]);
+            $pre = trim((string) ($cand['home_district'] ?? ''));
+            if ($pre === '' && $cand && ($reg = Regions::of($cand, null, new Skills($this->app->db))) && ($reg['from'] ?? '') !== 'pin') {
+                $pre = ($reg['state'] ?? '') === 'Tamil Nadu' ? (string) ($reg['district'] ?? '') : (string) ($reg['state'] ?? '');
+            }
+            $q[] = ['key' => 'district', 'part' => 1, 'kind' => 'select', 'prompt' => 'Your home district (or state, outside Tamil Nadu)', 'required' => true,
+                'hint' => 'Tamil Nadu districts first, then the neighbouring states.', 'options' => $opts, 'prefill' => in_array($pre, $opts, true) ? $pre : null];
+        }
         $q[] = ['key' => 'current_company', 'part' => 1, 'kind' => 'text', 'prompt' => 'Your current (or last) employer', 'required' => false, 'prefill' => $cand['current_company'] ?? null];
         $q[] = ['key' => 'current_title', 'part' => 1, 'kind' => 'text', 'prompt' => 'Your current (or last) job title', 'required' => false, 'prefill' => $cand['current_title'] ?? null];
         $q[] = ['key' => 'experience', 'part' => 1, 'kind' => 'years', 'prompt' => 'Your total years of work experience', 'required' => false,
             'hint' => 'All your paid work, including any jobs not on your CV. For example 4.5.', 'prefill' => $exp !== null ? (string) round($exp / 12, 1) : null];
-        $q[] = ['key' => 'qualifications', 'part' => 1, 'kind' => 'text', 'prompt' => 'Your qualifications', 'required' => false,
-            'hint' => 'For example B.Com, M.Com, CA Inter (cleared).', 'prefill' => $cand['qualifications'] ?? null];
+        $q[] = $branched
+            // The branch rule (21 Nov 2026): the branch decides, so it is asked for plainly.
+            ? ['key' => 'qualifications', 'part' => 1, 'kind' => 'text', 'prompt' => 'Your qualifications, with your branch (specialisation) and year of passing', 'required' => true,
+                'hint' => 'For example B.E. Mechanical Engineering (2024), or Diploma in EEE (2019).', 'prefill' => $cand['qualifications'] ?? null]
+            : ['key' => 'qualifications', 'part' => 1, 'kind' => 'text', 'prompt' => 'Your qualifications', 'required' => false,
+                'hint' => 'For example B.Com, M.Com, CA Inter (cleared).', 'prefill' => $cand['qualifications'] ?? null];
 
         // Part 2: the details we need. Salary and notice are not asked again within 30 days of them telling us.
         $on = $roles ? array_values(array_unique(array_merge(...array_map(fn ($r) => $this->standardOn($r), $roles)))) : self::STANDARD;
@@ -128,7 +145,9 @@ final class Questionnaires
             $loc = trim((string) $group[0]['location']);
             $prompt = ($group[0]['work_mode'] ?? null) === 'hybrid'
                 ? (count($roles) > 1 && count($byPlace) > 1 ? 'The ' . $group[0]['title'] . ' role is' : 'This role is') . " hybrid, based in $loc (some days in the office). Are you able to work there?"
-                : (count($roles) > 1 && count($byPlace) > 1 ? 'The ' . $group[0]['title'] . ' role is' : 'This role is') . " based in $loc. Are you able to work there?";
+                : (count($roles) > 1 && count($byPlace) > 1 ? 'The ' . $group[0]['title'] . ' role is' : 'This role is') . " based in $loc."
+                    // By region (21 Nov 2026): candidates from other districts and states are welcome if they will move.
+                    . (Regions::tiersOf($group[0]) !== null ? " Are you able to work there, relocating to $loc if you live further away?" : ' Are you able to work there?');
             $q[] = ['key' => $n++ === 0 ? 'relocate' : 'relocate_' . (int) $group[0]['id'], 'part' => 3, 'kind' => 'yesno', 'prompt' => $prompt, 'required' => true,
                 'options' => ['Yes', 'No'], 'flag' => ['No'], 'roles' => array_map(fn ($r) => (int) $r['id'], $group), 'place' => $loc];
         }

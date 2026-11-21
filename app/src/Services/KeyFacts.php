@@ -221,8 +221,10 @@ final class KeyFacts
         }
         // Those Claude assessed for this position first, by Claude's score; then the rest by keyword score. The two
         // scales differ (a keyword 96 is not better than a Claude 89), so they are never mixed (17 Nov 2026).
-        $by = fn (array $x, array $y): int => [(int) self::byClaude($y, $fitRows), self::rankScore($y, $fitRows) ?? -1, (string) ($x['full_name'] ?? '')]
-            <=> [(int) self::byClaude($x, $fitRows), self::rankScore($x, $fitRows) ?? -1, (string) ($y['full_name'] ?? '')];
+        // A position by region (21 Nov 2026): tier 1 first, then as above.
+        $t = fn (array $a): int => !array_key_exists('tier', $a) ? 0 : ($a['tier'] === null ? 4 : ($a['tier'] === 0 ? 5 : (int) $a['tier']));
+        $by = fn (array $x, array $y): int => [$t($x), (int) self::byClaude($y, $fitRows), self::rankScore($y, $fitRows) ?? -1, (string) ($x['full_name'] ?? '')]
+            <=> [$t($y), (int) self::byClaude($x, $fitRows), self::rankScore($x, $fitRows) ?? -1, (string) ($y['full_name'] ?? '')];
         usort($out['responded'], $by);
         usort($out['waiting'], $by);
         return $out;

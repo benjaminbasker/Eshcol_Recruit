@@ -115,6 +115,25 @@ final class RoleController extends Controller
             JOIN stages s ON s.id = a.stage_id
             WHERE a.role_id = ? AND (? = 0 OR a.stage_id = ?)
             ORDER BY s.kind IN (\'fail\', \'hold\'), eff_score IS NULL, eff_score DESC, a.applied_at DESC', [$id, $stageFilter, $stageFilter]);
+        // By region, in tiers (21 Nov 2026): each candidate's tier, district and distance; tier 1 first, then the score.
+        if (\Eshcol\Ats\Services\Regions::tiersOf($role) !== null && $apps) {
+            $fr = new FunctionRouting($this->app);
+            $cands = [];
+            foreach ($this->db->all('SELECT id, location, locality, pin_code, home_district FROM candidates WHERE id IN (' . implode(',', array_map(fn ($a) => (int) $a['candidate_id'], $apps)) . ')') as $c) {
+                $cands[(int) $c['id']] = $c;
+            }
+            foreach ($apps as $i => &$a) {
+                $c = $cands[(int) $a['candidate_id']] ?? [];
+                [$tier, $region] = $fr->tierOf($role, $c);
+                $km = $tier ? $fr->kmToOffice($role, $c) : null;
+                $a['tier'] = $tier;
+                $a['tier_label'] = \Eshcol\Ats\Services\Regions::label($tier, $region) . ($km !== null ? ' · ' . \Eshcol\Ats\Services\Commute::kmLabel($km) : '');
+                $a['_i'] = $i;
+            }
+            unset($a);
+            $t = fn (array $a): int => $a['tier'] === null ? 4 : ($a['tier'] === 0 ? 5 : (int) $a['tier']);
+            usort($apps, fn ($x, $y) => [(int) in_array($x['stage_kind'], ['fail', 'hold'], true), $t($x), $x['_i']] <=> [(int) in_array($y['stage_kind'], ['fail', 'hold'], true), $t($y), $y['_i']]);
+        }
         $above = array_values(array_filter($apps, fn ($a) => in_array($a['stage_kind'], ['fail', 'hold'], true) || $a['eff_score'] === null || (int) $a['eff_score'] >= (int) $role['score_threshold']));
         $below = array_values(array_filter($apps, fn ($a) => !in_array($a['stage_kind'], ['fail', 'hold'], true) && $a['eff_score'] !== null && (int) $a['eff_score'] < (int) $role['score_threshold']));
         $counts = [];
@@ -458,6 +477,36 @@ final class RoleController extends Controller
             : FunctionRouting::defaultScope($data['exp_min'], $data['exp_max'], $data['work_mode']);
         // "Within N km of the office" (17 Nov 2026): the distance, 5 to 2,000 km.
         $data['location_radius_km'] = $data['location_scope'] === 'radius' ? max(5, min(2000, (int) ($_POST['location_radius_km'] ?? FunctionRouting::DEFAULT_RADIUS_KM))) : null;
+        // By region, in tiers; the engineering branches; experience by qualification (21 Nov 2026, update 076).
+        if (!\Eshcol\Ats\Services\Regions::ready($this->app)) {
+            $data['location_scope'] = $data['location_scope'] === 'tiers' ? 'open' : $data['location_scope']; // before update 076
+        } else {
+            if ($data['location_scope'] === 'tiers') {
+                $tiers = [];
+                foreach (['1', '2', '3'] as $k) {
+                    $tiers[$k] = \Eshcol\Ats\Services\Regions::parseList((string) ($_POST['tier_' . $k] ?? ''));
+                }
+                $data['location_tiers'] = array_filter($tiers) ? json_encode($tiers) : json_encode(\Eshcol\Ats\Services\Regions::DEFAULT_TIERS);
+            } else {
+                $data['location_tiers'] = null;
+            }
+            $br = array_values(array_intersect(array_keys(\Eshcol\Ats\Services\EngineeringBranches::BRANCHES), array_map('strval', (array) ($_POST['eng_branches'] ?? []))));
+            $data['eng_branches'] = $br ? implode(',', $br) : null;
+            $win = [];
+            foreach (['degree', 'diploma'] as $k) {
+                $a = $this->num("expq_{$k}_min");
+                $b = $this->num("expq_{$k}_max");
+                if ($a !== null && $b !== null && $a <= $b) {
+                    $win[$k] = [round($a, 1), round($b, 1)];
+                }
+            }
+            $data['exp_by_qual'] = $win ? json_encode($win) : null;
+            // The overall band covers both windows, so lists, the free score and the client view read it as before.
+            if ($win) {
+                $data['exp_min'] = min(array_column($win, 0));
+                $data['exp_max'] = max(array_column($win, 1));
+            }
+        }
         $criteria = [];
         foreach (self::KINDS as $kind => $field) {
             foreach (preg_split('/[\n,;]+/', (string) ($_POST[$field] ?? '')) as $v) {

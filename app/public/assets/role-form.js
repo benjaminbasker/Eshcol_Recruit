@@ -190,3 +190,13 @@
   radios.forEach(function (r) { r.addEventListener('change', apply); });
   apply();
 })();
+
+// Engineering branches (21 Nov 2026): "Tick the technician branches" ticks Mechanical, EEE, Electrical, Mechatronics and the rest.
+(function () {
+  var b = document.getElementById('br-tech');
+  if (!b) { return; }
+  b.addEventListener('click', function () {
+    var on = (b.getAttribute('data-codes') || '').split(',');
+    document.querySelectorAll('input[name="eng_branches[]"]').forEach(function (c) { c.checked = on.indexOf(c.value) >= 0; });
+  });
+})();

@@ -70,11 +70,22 @@ $wLabels = ['must' => 'Must-haves', 'experience' => 'Experience', 'qualification
             $scope = $scopeSet ?: $suggested; ?>
         <fieldset class="field" id="who-fieldset">
           <legend>Who can we consider? <span class="hint">where the candidates live</span></legend>
-          <?php foreach (\Eshcol\Ats\Services\FunctionRouting::SCOPES as $sk => $sl): ?>
+          <?php $regionsReady = \Eshcol\Ats\Services\Regions::ready(\Eshcol\Ats\App::get());
+          foreach (\Eshcol\Ats\Services\FunctionRouting::SCOPES as $sk => $sl): if ($sk === 'tiers' && !$regionsReady) { continue; } ?>
             <label style="display:block;font-weight:normal;margin:2px 0"><input type="radio" name="location_scope" value="<?= $sk ?>"<?= $scope === $sk ? ' checked' : '' ?><?= $scopeSet ? ' data-touched="1"' : '' ?>> <?= $sk === 'radius'
                 ? 'Within <input type="number" name="location_radius_km" min="5" max="2000" step="5" value="' . (int) ($r['location_radius_km'] ?? \Eshcol\Ats\Services\FunctionRouting::DEFAULT_RADIUS_KM) . '" style="width:84px;display:inline-block" aria-label="Distance in km"> km of the office (the job\'s city, plus towns within that distance: e.g. freshers who will move for the job)'
-                : e($sk === 'local' ? 'Local candidates only (the job\'s city, its localities and the other acceptable locations below)' : ($sk === 'open' ? 'Open to candidates from other cities' : 'Remote: anywhere')) ?></label>
+                : e($sk === 'local' ? 'Local candidates only (the job\'s city, its localities and the other acceptable locations below)' : ($sk === 'open' ? 'Open to candidates from other cities' : ($sk === 'tiers' ? 'By region, in tiers: districts and states, first preference first (anywhere else is Not suitable)' : 'Remote: anywhere'))) ?></label>
           <?php endforeach; ?>
+          <?php if ($regionsReady):
+            $tierVals = json_decode((string) ($r['location_tiers'] ?? ''), true) ?: \Eshcol\Ats\Services\Regions::DEFAULT_TIERS; ?>
+          <div id="tier-box" style="margin:4px 0 6px 24px;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:center">
+            <?php foreach (['1' => 'Tier 1', '2' => 'Tier 2', '3' => 'Tier 3'] as $tk => $tl): ?>
+              <label for="tier_<?= $tk ?>" style="font-weight:normal;margin:0"><?= $tl ?></label>
+              <input type="text" id="tier_<?= $tk ?>" name="tier_<?= $tk ?>" value="<?= e(implode(', ', (array) ($tierVals[$tk] ?? []))) ?>" placeholder="Districts or states, separated by commas">
+            <?php endforeach; ?>
+            <span></span><span class="hint">Used when "By region, in tiers" is chosen. A district (Tiruvallur) or a whole state (Tamil Nadu); the first tier that lists someone's district or state is theirs. Each candidate shows their tier, district and distance to the office; the list is sorted by tier first.</span>
+          </div>
+          <?php endif; ?>
           <p class="hint" id="scope-hint">Suggested from the experience band: junior posts take local candidates only (a move rarely pays for itself), senior posts are open to other cities. Change it if the client will relocate someone. Someone from another city on a local-only post, or further than the distance you set, is marked Not suitable with the reason. Distances are straight-line, from the client's office (its address or Maps link), to the candidate's locality or town.</p>
         </fieldset>
         <fieldset class="field">
@@ -105,6 +116,28 @@ $wLabels = ['must' => 'Must-haves', 'experience' => 'Experience', 'qualification
           <div class="field"><label for="qualifications">Qualifications <span class="hint">any one is enough</span></label><textarea id="qualifications" name="qualifications" rows="3"><?= e($lines('qualification')) ?></textarea></div>
           <div class="field"><label for="extra_locations">Other acceptable locations</label><textarea id="extra_locations" name="extra_locations" rows="3"><?= e($lines('location')) ?></textarea></div>
         </div>
+        <?php if (!empty($regionsReady)):
+          $brOn = \Eshcol\Ats\Services\EngineeringBranches::fromRole($r);
+          $wq = \Eshcol\Ats\Services\FunctionRouting::byQual($r);
+          $wv = fn (string $k, int $i) => isset($wq[$k]) ? rtrim(rtrim(number_format($wq[$k][$i], 1), '0'), '.') : ''; ?>
+        <details class="field"<?= $brOn || $wq ? ' open' : '' ?>>
+          <summary><b>Engineering branches and experience by qualification</b> <span class="hint">for engineering positions; leave empty otherwise</span></summary>
+          <p class="hint" style="margin:6px 0">Tick the branches this position takes. A B.E. / B.Tech, M.E. / M.Tech or diploma in any other branch is marked Not suitable with the reason (Civil, CSE…); a CV that doesn't show the branch is asked on the details form. Every spelling is understood: CSE, Computer Science and Engineering and CS&amp;E are the same branch.
+            <button type="button" class="btn ghost small" id="br-tech" data-codes="<?= e(implode(',', \Eshcol\Ats\Services\EngineeringBranches::TECHNICIAN_DEFAULT)) ?>">Tick the technician branches</button></p>
+          <?php foreach (\Eshcol\Ats\Services\EngineeringBranches::grouped() as $grp => $list): ?>
+            <div style="margin:4px 0"><span class="small muted"><?= e($grp) ?>:</span>
+              <?php foreach ($list as $code => $nm): ?><label style="display:inline-block;font-weight:normal;margin:0 12px 0 0;white-space:nowrap"><input type="checkbox" name="eng_branches[]" value="<?= e($code) ?>"<?= in_array($code, $brOn, true) ? ' checked' : '' ?>> <?= e($nm) ?></label><?php endforeach; ?>
+            </div>
+          <?php endforeach; ?>
+          <div class="row" style="margin-top:8px">
+            <div class="field"><label for="expq_degree_min">B.E. / B.Tech: from <span class="hint">years</span></label><input type="number" step="0.5" min="0" id="expq_degree_min" name="expq_degree_min" value="<?= e($wv('degree', 0)) ?>"></div>
+            <div class="field"><label for="expq_degree_max">to <span class="hint">years</span></label><input type="number" step="0.5" min="0" id="expq_degree_max" name="expq_degree_max" value="<?= e($wv('degree', 1)) ?>"></div>
+            <div class="field"><label for="expq_diploma_min">Diploma: from <span class="hint">years</span></label><input type="number" step="0.5" min="0" id="expq_diploma_min" name="expq_diploma_min" value="<?= e($wv('diploma', 0)) ?>"></div>
+            <div class="field"><label for="expq_diploma_max">to <span class="hint">years</span></label><input type="number" step="0.5" min="0" id="expq_diploma_max" name="expq_diploma_max" value="<?= e($wv('diploma', 1)) ?>"></div>
+          </div>
+          <p class="hint">Experience by qualification replaces the band below for routing: someone outside their own window (a diploma holder with 1 year) is not put on the pipeline. Leave a qualification empty and this position doesn't take it. The band below is set to cover both windows when you save.</p>
+        </details>
+        <?php endif; ?>
         <div class="row">
           <div class="field<?= $miss('exp_min') ?>"><label for="exp_min">Experience from<?= $star ?> <span class="hint">years</span></label><input type="number" step="0.5" min="0" id="exp_min" name="exp_min" value="<?= e($r['exp_min'] ?? '') ?>"<?= $req('exp_min') ?>><?= $err('exp_min') ?></div>
           <div class="field<?= $miss('exp_max') ?>"><label for="exp_max">to<?= $star ?> <span class="hint">years</span></label><input type="number" step="0.5" min="0" id="exp_max" name="exp_max" value="<?= e($r['exp_max'] ?? '') ?>"<?= $req('exp_max') ?>><?= $err('exp_max') ?></div>

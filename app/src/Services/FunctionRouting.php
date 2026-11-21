@@ -33,7 +33,7 @@ final class FunctionRouting
         'outside_band' => 'Outside the experience range', 'experience_unknown' => 'Experience not known', 'not_categorised' => 'Not categorised yet',
         'blocked' => 'Do not contact, or marked unreliable', 'no_cv_text' => 'No readable CV yet',
         'band_elsewhere' => "Fits another position's band instead", 'no_routing' => "Position doesn't take routed CVs",
-        'not_qualified' => 'Not a B.Com', 'client_rejected' => 'Turned down by this client before',
+        'not_qualified' => 'Not qualified (B.Com or branch rule)', 'client_rejected' => 'Turned down by this client before',
     ];
 
     /**
@@ -55,7 +55,7 @@ final class FunctionRouting
         $text = (string) $this->app->db->col('SELECT text FROM cv_files WHERE candidate_id = ? AND text IS NOT NULL ORDER BY id DESC LIMIT 1', [(int) $cand['id']]);
         return preg_match_all('/\p{L}/u', $text) < 200 ? ['no_cv_text', 'no readable CV yet'] : null;
     }
-    public const SCOPES = ['local' => 'Local candidates only', 'radius' => 'Within a distance of the office', 'open' => 'Open to other cities', 'remote' => 'Remote: anywhere'];
+    public const SCOPES = ['local' => 'Local candidates only', 'radius' => 'Within a distance of the office', 'tiers' => 'By region, in tiers', 'open' => 'Open to other cities', 'remote' => 'Remote: anywhere'];
     /** The distance a "within N km" position uses when none is set. */
     public const DEFAULT_RADIUS_KM = 100;
 
@@ -116,10 +116,25 @@ final class FunctionRouting
         }
         $fns = $this->cat->roleFunctions($role);
         $mine = array_filter([(string) $cat['function_code'], (string) ($cat['secondary_code'] ?? '')]);
-        if ($fns && !array_intersect($mine, $fns)) {
+        // A fresher (under a year) on a position that sets engineering branches: the branch decides, not the field
+        // (21 Nov 2026: a fresh graduate's CV rarely shows a field of work; projects read as design or "other").
+        $fresherByBranch = EngineeringBranches::fromRole($role) && (exp_now($cand) ?? 0) < 12;
+        if ($fns && !$fresherByBranch && !array_intersect($mine, $fns)) {
             return ['other_field', 'works in ' . Categoriser::functionName($this->app, $cat['function_code'])
                 . '; this position takes ' . implode(', ', array_map(fn ($c) => Categoriser::functionName($this->app, $c), $fns))];
         }
+        // The branch rule (21 Nov 2026): an engineering degree or diploma in a branch the position takes.
+        [$bv, $bwhy, $level] = self::branchVerdict($role, $cand);
+        if ($bv === 'fail') {
+            return ['not_qualified', $bwhy];
+        }
+        $qualNote = $bv === 'confirm' ? $bwhy : '';
+        // Experience by qualification (21 Nov 2026: a B.E. up to 6 years, a diploma 2 to 7).
+        if (self::windowFor($role, $level) === false) {
+            return ['outside_band', 'a ' . EngineeringBranches::LEVELS[$level === 'diploma' ? 'diploma' : 'degree'] . ' holder: this position takes ' . self::windowsText($role)];
+        }
+        $byQual = (bool) self::byQual($role);
+        $role = self::withWindow($role, $level);
         if ($role['exp_min'] !== null || $role['exp_max'] !== null) {
             $m = exp_now($cand);
             if ($m === null) {
@@ -127,17 +142,25 @@ final class FunctionRouting
                     return ['experience_unknown', 'experience not known (no dates or total in the CV)'];
                 }
             } elseif (!RoleRouter::inWindow($role, $m / 12)) {
-                return ['outside_band', round($m / 12, 1) . " yrs: outside this position's experience range"];
+                return ['outside_band', round($m / 12, 1) . " yrs: outside this position's experience range" . ($byQual ? ' (' . self::windowsText($role) . ')' : '')];
             }
         }
         // The B.Com rule (17 Nov 2026) on positions that require B.Com: a known non-commerce degree is out.
-        $qualNote = '';
         if (QualificationGate::requiresBcom($this->qualCriteria((int) ($role['id'] ?? 0)))) {
             [$qv, $qwhy] = QualificationGate::verdict($cand['qualifications'] ?? null);
             if ($qv === 'fail') {
                 return ['not_qualified', $qwhy . '; this position needs B.Com'];
             }
-            $qualNote = $qv === 'confirm' ? $qwhy : '';
+            $qualNote = $qv === 'confirm' ? $qwhy : $qualNote;
+        }
+        // By region, in tiers (21 Nov 2026): placed outside every tier is Not suitable; an unknown district keeps no one out.
+        if (($tiers = Regions::tiersOf($role)) !== null) {
+            [$tier, $region] = $this->tierOf($role, $cand);
+            if ($tier === 0) {
+                return ['other_city', 'lives in ' . self::regionText($region) . '; this position takes candidates from ' . Regions::covered($tiers) . ' only'];
+            }
+            $km = $tier !== null && !empty($role['id']) ? $this->kmToOffice($role, $cand) : null;
+            return ['pipeline', implode('; ', array_filter([Regions::label($tier, $region) . ($km !== null ? ', about ' . $km . ' km' : ''), $qualNote]))];
         }
         [$where, $city] = $this->whereFrom($role, $cand, $cat);
         $scope = self::scopeOf($role);
@@ -220,6 +243,17 @@ final class FunctionRouting
      */
     public function screenFail(array $cand, ?array $cat, array $role): ?array
     {
+        // The branch rule and the tiers (21 Nov 2026).
+        [$bv, $bwhy] = self::branchVerdict($role, $cand);
+        if ($bv === 'fail') {
+            return ['not_qualified', ucfirst($bwhy)];
+        }
+        if (($tiers = Regions::tiersOf($role)) !== null) {
+            [$tier, $region] = $this->tierOf($role, $cand);
+            if ($tier === 0) {
+                return ['other_city', 'Lives in ' . self::regionText($region) . '; this position takes candidates from ' . Regions::covered($tiers) . ' only'];
+            }
+        }
         if (QualificationGate::requiresBcom($this->qualCriteria((int) $role['id']))) {
             [$qv, $qwhy] = QualificationGate::verdict($cand['qualifications'] ?? null);
             if ($qv === 'fail') {
@@ -277,6 +311,74 @@ final class FunctionRouting
             Audit::log('screening_applied', 'role', $roleId, ['moved' => count($out)]);
         }
         return $out;
+    }
+
+    /**
+     * The branch rule on a position that sets branches: [verdict, reason, level], or [null, '', null] when it sets none. Pure.
+     * @return array{0: ?string, 1: string, 2: ?string}
+     */
+    public static function branchVerdict(array $role, array $cand): array
+    {
+        $codes = EngineeringBranches::fromRole($role);
+        return $codes ? EngineeringBranches::verdict($cand['qualifications'] ?? null, $codes) : [null, '', null];
+    }
+
+    /** The experience windows by qualification ('degree' => [0, 6], 'diploma' => [2, 7]), or [] when the position has one band. Pure. */
+    public static function byQual(array $role): array
+    {
+        $w = json_decode((string) ($role['exp_by_qual'] ?? ''), true);
+        $out = [];
+        foreach (['degree', 'diploma'] as $k) {
+            if (isset($w[$k][0], $w[$k][1]) && is_numeric($w[$k][0]) && is_numeric($w[$k][1])) {
+                $out[$k] = [(float) $w[$k][0], (float) $w[$k][1]];
+            }
+        }
+        return $out;
+    }
+
+    /** The window for a level: [min, max]; null when the position has none by qualification; false when it doesn't take that level. Pure. */
+    public static function windowFor(array $role, ?string $level): array|false|null
+    {
+        $w = self::byQual($role);
+        if (!$w) {
+            return null;
+        }
+        if ($level === null) {
+            // Not known yet (the form asks): the widest window, so nobody is kept out on a guess.
+            return [min(array_column($w, 0)), max(array_column($w, 1))];
+        }
+        return $w[$level] ?? false;
+    }
+
+    /** The position with its band (and no allowance) set from the candidate's qualification window. Pure. */
+    public static function withWindow(array $role, ?string $level): array
+    {
+        $w = self::windowFor($role, $level);
+        return is_array($w) ? ['exp_min' => $w[0], 'exp_max' => $w[1], 'exp_allow_below' => 0, 'exp_allow_above' => 0] + $role : $role;
+    }
+
+    /** "B.E. / B.Tech 0 to 6 years, Diploma 2 to 7 years". Pure. */
+    public static function windowsText(array $role): string
+    {
+        $f = fn ($v) => rtrim(rtrim(number_format((float) $v, 1), '0'), '.');
+        $out = [];
+        foreach (self::byQual($role) as $k => [$a, $b]) {
+            $out[] = EngineeringBranches::LEVELS[$k] . ' ' . $f($a) . ' to ' . $f($b) . ' years';
+        }
+        return implode(', ', $out);
+    }
+
+    /** [tier (1 to 3; 0 outside every tier; null not known), region] for a candidate on a position by region. */
+    public function tierOf(array $role, array $cand): array
+    {
+        $region = Regions::of($cand, null, $this->skills());
+        return [Regions::tierFor(Regions::tiersOf($role) ?? Regions::DEFAULT_TIERS, $region), $region];
+    }
+
+    private static function regionText(?array $r): string
+    {
+        $parts = $r ? array_values(array_unique(array_filter([$r['district'] ?? null, $r['state'] ?? null]))) : [];
+        return $parts ? implode(', ', $parts) : 'an unknown place';
     }
 
     /** The distance a "within N km" position takes (its own, else 100 km). Pure. */
@@ -439,7 +541,7 @@ final class FunctionRouting
         foreach ($db->all("SELECT * FROM roles WHERE status = 'open' AND is_pool = 0 ORDER BY id") as $r) {
             [$res, $why] = $this->decide($cand, $cat, $r);
             $out[(int) $r['id']] = ['role' => $r, 'result' => $res, 'why' => $why, 'on_role' => in_array((int) $r['id'], $on, true),
-                'in_band' => $m === null || RoleRouter::expFit($r, $m / 12)[1] === 'in band'];
+                'in_band' => $m === null || RoleRouter::expFit(self::withWindow($r, self::branchVerdict($r, $cand)[2]), $m / 12)[1] === 'in band'];
         }
         $bandFit = null;
         foreach ($out as $p) {

@@ -99,6 +99,7 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
             <?php if (!empty($a['unreliable_at'])): ?> <span class="badge cancelled" title="<?= e(\Eshcol\Ats\Services\Reliability::describe($a)) ?>">unreliable</span><?php endif; ?>
             <div><?= $kfOf($a) ? \Eshcol\Ats\Services\KeyFacts::line($kfOf($a), ['responded']) . ' ' . \Eshcol\Ats\Services\KeyFacts::cvButton($kfOf($a)) : '' ?></div>
             <div style="margin-top:4px">
+              <?php if (isset($a['tier_label'])): ?><span class="chip <?= $a['tier'] === 1 ? 'yes' : ($a['tier'] === 0 ? 'no' : 'sand') ?>" title="Where they live, by the position's tiers"><?= e($a['tier_label']) ?></span><?php endif; ?>
               <?= $fitChip($a) ?>
               <?php if ($a['fit_note']): ?><span class="chip <?= $a['source'] === 'routed' ? 'sand' : 'flag' ?>"><?= $a['source'] === 'routed' ? '↪ ' : '⚠ ' ?><?= e($a['fit_note']) ?></span><?php endif; ?>
               <?php if ($cd): ?><span class="chip <?= ['shortlist' => 'yes', 'hold' => 'sand', 'reject' => 'flag'][$cd] ?>">Client: <?= e(\Eshcol\Ats\Services\Shortlists::DECISIONS[$cd]) ?></span><?php endif; ?>
@@ -188,8 +189,10 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
   // fixed order (name, then reference), so the list doesn't reshuffle between visits.
   $isLikely = fn ($a) => !in_array($a['stage_kind'] ?? '', ['fail', 'hold'], true) && in_array($fitRows[(int) $a['id']]['band'] ?? '', ['Strong', 'Possible'], true) && ($fitRows[(int) $a['id']]['status'] ?? '') === 'done';
   $likely = array_values(array_filter($all, $isLikely));
-  usort($likely, fn ($x, $y) => [(int) $fitRows[(int) $y['id']]['score'], mb_strtolower((string) $x['full_name']), (int) $x['candidate_id']]
-      <=> [(int) $fitRows[(int) $x['id']]['score'], mb_strtolower((string) $y['full_name']), (int) $y['candidate_id']]);
+  // By region (21 Nov 2026): tier 1 first, then Claude's score.
+  $tierKey = fn (array $a): int => !array_key_exists('tier', $a) ? 0 : ($a['tier'] === null ? 4 : ($a['tier'] === 0 ? 5 : (int) $a['tier']));
+  usort($likely, fn ($x, $y) => [$tierKey($x), (int) $fitRows[(int) $y['id']]['score'], mb_strtolower((string) $x['full_name']), (int) $x['candidate_id']]
+      <=> [$tierKey($y), (int) $fitRows[(int) $x['id']]['score'], mb_strtolower((string) $y['full_name']), (int) $y['candidate_id']]);
   $sentN = count(array_filter($all, fn ($a) => isset(($sentToClient ?? [])[(int) $a['candidate_id']])));
   $openDays = max(0, (int) round((time() - strtotime((string) ($role['opened_at'] ?: $role['created_at']))) / 86400));
   $topScore = $likely ? (int) $fitRows[(int) $likely[0]['id']]['score'] : null;
@@ -327,8 +330,9 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
                   <?php $kq = \Eshcol\Ats\Services\KeyFacts::topQualification($kfOf($a)['qualifications'] ?? null); ?>
                   <div class="meta"><?= e(experience(exp_now($a))) ?> · <?= e($a['location'] ?: '?') ?><?= $kq !== '' ? ' · ' . e($kq) : '' ?> · <?= $notice($a['notice_days']) ?> · <?= e(lpa($kfOf($a)['ctc_current_lpa'] ?? null)) ?> → <?= e(lpa($a['ctc_expected_lpa'])) ?></div>
                   <?php if (in_array($a['stage_kind'], ['fail', 'hold'], true)): $hold = $a['stage_kind'] === 'hold'; ?><div class="tags reason-tags"><span class="chip <?= $hold ? 'keep' : 'reason' ?>" title="<?= e($a['stage_reason'] ?: ($hold ? 'No note yet' : 'No reason given yet')) ?>"><?= e($a['stage_reason'] ? mb_strimwidth($a['stage_reason'], 0, 60, '…') : ($hold ? 'kept for later' : 'no reason given')) ?></span></div><?php endif; ?>
-                  <?php if ($cd || $a['fit_note'] || $a['do_not_contact'] || !empty($a['unreliable_at']) || isset($qs[(int) $a['id']]) || isset($fit['rows'][(int) $a['id']]) || isset($sentToClient[(int) $a['candidate_id']])): ?>
+                  <?php if (isset($a['tier_label']) || $cd || $a['fit_note'] || $a['do_not_contact'] || !empty($a['unreliable_at']) || isset($qs[(int) $a['id']]) || isset($fit['rows'][(int) $a['id']]) || isset($sentToClient[(int) $a['candidate_id']])): ?>
                     <div class="tags">
+                      <?php if (isset($a['tier_label'])): ?><span class="chip <?= $a['tier'] === 1 ? 'yes' : ($a['tier'] === 0 ? 'no' : 'sand') ?>" style="text-decoration:none"><?= e($a['tier_label']) ?></span><?php endif; ?>
                       <?= $fitChip($a) ?>
                       <?php if ($a['do_not_contact']): ?><span class="chip no" style="text-decoration:none">do not contact</span><?php endif; ?>
                       <?php if (!empty($a['unreliable_at'])): ?><span class="chip no" style="text-decoration:none" title="<?= e(\Eshcol\Ats\Services\Reliability::describe($a)) ?>">unreliable</span><?php endif; ?>
