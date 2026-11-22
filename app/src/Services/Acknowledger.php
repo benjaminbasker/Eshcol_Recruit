@@ -214,6 +214,10 @@ final class Acknowledger
         if ($lead && $this->app->db->col("SELECT 1 FROM questionnaires WHERE id = ? AND status IN ('sent','opened')", [$lead])) {
             $link = (new Questionnaires($this->app))->link($lead);
         }
+        // Trainee Technicians hiring: its own Gen Z email (lilac, LinkedIn side quest), 22 Nov 2026.
+        if ($this->app->setting('ack_trainee_style', '1') === '1' && TraineeTechAck::applies($roles)) {
+            return TraineeTechAck::render($first, $link, Engagement::forRoles($roles));
+        }
         $st = Questionnaires::subjectTitle($roles);
         // The job they asked for on the website, when it isn't a position here (17 Nov 2026): named, not "your CV".
         $applied = !$roles ? trim((string) ($c['applied_for'] ?? '')) : '';
