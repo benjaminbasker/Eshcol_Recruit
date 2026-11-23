@@ -215,29 +215,8 @@ final class FitController extends Controller
     public function addAll(int $id): never
     {
         $role = $this->findOr404('roles', $id);
-        $importer = new CandidateImporter($this->app);
-        $uid = (int) Auth::user()['id'];
-        $added = 0;
-        foreach ((new Matcher($this->app))->forRole($role, 200) as $m) {
-            $c = $m['cand'] ?? null;
-            $must = $m['breakdown']['parts']['must'] ?? null;
-            if (!$c || !\Eshcol\Ats\Services\Contact::canPutForward($c)) {
-                continue;
-            }
-            // Only the ones the free check finds relevant: same field and experience inside the allowance.
-            $nMust = $must ? count($must['matched']) + count($must['missing']) : 0;
-            if (!\Eshcol\Ats\Services\RoleRouter::sameField(count($must['matched']), $nMust)) {
-                continue;
-            }
-            $months = exp_now($c);
-            if (($role['exp_min'] !== null || $role['exp_max'] !== null)
-                && ($months === null ? (float) ($role['exp_min'] ?? 0) > 1 : !\Eshcol\Ats\Services\RoleRouter::inWindow($role, $months / 12))) {
-                continue;
-            }
-            if ($importer->attach((int) $c['id'], $id, $uid, 'database')) {
-                $added++;
-            }
-        }
+        // Only the ones the free check finds relevant: same field and experience inside the allowance (shared with the morning sweep).
+        $added = count((new \Eshcol\Ats\Services\DatabaseSweep($this->app))->addRelevant($role, (int) Auth::user()['id']));
         $q = FitAssessor::enabled($this->app) ? (new FitAssessor($this->app))->queueRole($id) : ['queued' => 0, 'skipped' => 0, 'not_relevant' => 0];
         Audit::log('added_all_from_database', 'role', $id, ['added' => $added]);
         Http::flash('ok', "$added candidate(s) added from your database. {$q['queued']} relevant candidate(s) are queued for Claude.");

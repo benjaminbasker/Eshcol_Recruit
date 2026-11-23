@@ -83,6 +83,9 @@ final class RoleController extends Controller
             return $id;
         });
         Audit::log('role_created', 'role', $id);
+        if (isset($_POST['daily_sweep'])) {
+            \Eshcol\Ats\Services\DatabaseSweep::set($this->app, $id, true); // the morning sweep (23 Nov 2026)
+        }
         $this->attachJd($id, $jd);
         Http::flash('ok', 'Role created. Upload CVs to it, or check who you already have on file.');
         Http::redirect("/roles/$id");
@@ -238,6 +241,9 @@ final class RoleController extends Controller
             $this->saveCriteria($id, $criteria);
         });
         $hist?->record($id, $before, $hist->snapshot($id), (int) Auth::user()['id']); // position history (B13)
+        if (!$current['is_pool']) {
+            \Eshcol\Ats\Services\DatabaseSweep::set($this->app, $id, isset($_POST['daily_sweep'])); // the morning sweep (23 Nov 2026)
+        }
         $this->attachJd($id, $jd);
         $n = $this->rescoreAll($id);
         Audit::log('role_updated', 'role', $id);

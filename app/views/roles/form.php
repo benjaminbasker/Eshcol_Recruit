@@ -199,6 +199,10 @@ $wLabels = ['must' => 'Must-haves', 'experience' => 'Experience', 'qualification
           </select></div>
         <div class="field"><label><input type="checkbox" name="accepts_routed" value="1"<?= ($r['accepts_routed'] ?? 1) ? ' checked' : '' ?>> Accept CVs sent for other roles</label>
           <p class="hint">When someone applies for a different role but their experience fits this one (and they match its must-haves), they're added here too, marked "routed".</p></div>
+        <?php if (empty($r['is_pool'])): $sweepOn = !empty($r['id']) && \Eshcol\Ats\Services\DatabaseSweep::on(\Eshcol\Ats\App::get(), (int) $r['id']); ?>
+        <div class="field"><label><input type="checkbox" name="daily_sweep" value="1"<?= $sweepOn ? ' checked' : '' ?>> Every morning, add relevant matches from the database</label>
+          <p class="hint">At <?= \Eshcol\Ats\Services\DatabaseSweep::HOUR ?> am, the same as "Add all relevant" on the matches page: anyone on file in this field with experience inside the allowance is added (screening rules apply), and Claude assesses the relevant ones (about ₹1 each). A safety net for applications whose email names no position. Nobody is emailed.</p></div>
+        <?php endif; ?>
         <div class="row">
           <div class="field"><label for="opened_at">Opened</label><input type="date" id="opened_at" name="opened_at" value="<?= e($r['opened_at'] ?? '') ?>"></div>
           <div class="field"><label for="target_date">Target</label><input type="date" id="target_date" name="target_date" value="<?= e($r['target_date'] ?? '') ?>"></div>

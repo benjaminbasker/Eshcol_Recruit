@@ -1,7 +1,10 @@
 <div class="page-head">
   <div><p class="eyebrow"><?= e($role['client']) ?> · <?= e($role['code']) ?></p>
     <h1>Already in your database</h1>
-    <p class="muted">Candidates on file who fit <b><?= e($role['title']) ?></b>, best first. People who asked not to be contacted, or whose time on file has run out, are left out.</p></div>
+    <p class="muted">Candidates on file who fit <b><?= e($role['title']) ?></b>, best first. People who asked not to be contacted, or whose time on file has run out, are left out.</p>
+    <?php $sw = \Eshcol\Ats\Services\DatabaseSweep::last(\Eshcol\Ats\App::get(), (int) $role['id']); if (\Eshcol\Ats\Services\DatabaseSweep::on(\Eshcol\Ats\App::get(), (int) $role['id'])): ?>
+      <p class="small" style="margin:4px 0 0"><span class="chip yes">Morning sweep on</span> <?= $sw ? 'Last run ' . e(nice_date($sw['at'], true)) . ': ' . ($sw['added'] ? count($sw['added']) . ' added (' . e(implode(', ', array_slice($sw['added'], 0, 8))) . (count($sw['added']) > 8 ? '…' : '') . ')' : 'nobody new') . '.' : 'Runs at ' . \Eshcol\Ats\Services\DatabaseSweep::HOUR . ' am.' ?></p>
+    <?php endif; ?></div>
   <div class="actions">
     <?php if ($results): ?>
       <form method="post" action="/roles/<?= $role['id'] ?>/add-all"><?= csrf() ?><button class="btn" type="submit" data-confirm-click="Add every relevant match (same field, experience inside the allowance) to this role? Claude then assesses them, about ₹1–2 each.">Add all relevant; Claude assesses them</button></form>

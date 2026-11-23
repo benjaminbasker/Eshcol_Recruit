@@ -202,6 +202,12 @@ $tasks = [
         $app->db->run('DELETE FROM auth_throttle WHERE window_start < NOW() - INTERVAL 1 DAY');
         return "$n temporary file(s) removed";
     }],
+    // The morning sweep (23 Nov 2026): "Add all relevant" for each position that has it on, so an application whose
+    // email named no position is still found. Claude's assessments follow in the fit task.
+    'db_sweep' => [fn () => $dueDaily('db_sweep', \Eshcol\Ats\Services\DatabaseSweep::HOUR) && !(new \Eshcol\Ats\Services\Migrator($app))->pending(), function () use ($app) {
+        $uid = (int) $app->db->col("SELECT id FROM users WHERE role = 'owner' AND is_active = 1 ORDER BY id LIMIT 1");
+        return $uid ? (new \Eshcol\Ats\Services\DatabaseSweep($app))->runDaily($uid) : 'no owner to add them as';
+    }],
     'audit_trim' => [fn () => $dueDaily('audit_trim', 4), function () use ($app) {
         // The activity log is kept for two years (India's rules ask for at least one).
         $n = $app->db->run('DELETE FROM audit_log WHERE created_at < NOW() - INTERVAL 2 YEAR')->rowCount();
