@@ -19,7 +19,7 @@ final class InterviewController extends Controller
     {
         $this->db->col('SELECT id FROM roles WHERE id = ?', [$roleId]) || Http::abort(404);
         $n = (new Interviews($this->app))->addSlots($roleId, (int) ($_POST['round'] ?? 1), (string) ($_POST['kind'] ?? 'virtual'),
-            (array) ($_POST['times'] ?? []), (int) ($_POST['duration'] ?? 30), 'you');
+            array_merge((array) ($_POST['times'] ?? []), Interviews::pickedTimes($_POST)), (int) ($_POST['duration'] ?? 30), 'you');
         Http::flash($n ? 'ok' : 'error', $n ? "$n time slot" . ($n === 1 ? '' : 's') . ' added. Now invite candidates to choose.' : 'No times added: enter at least one date and time in the future.');
         Http::redirect("/roles/$roleId#interviews");
     }
@@ -69,6 +69,16 @@ final class InterviewController extends Controller
         Http::flash($sent ? 'ok' : 'info', $sent ? "Round $round invitations sent to $sent candidate" . ($sent === 1 ? '' : 's') . '. Each can now choose a time.'
             : ($last !== '' ? $last : "Nobody to invite for round $round."));
         Http::redirect($this->back("/roles/$roleId#interviews"));
+    }
+
+    /** Corrects an interview's round without emailing anyone (23 Nov 2026). */
+    public function correctRound(int $id): never
+    {
+        $iv = $this->db->one('SELECT i.*, a.candidate_id FROM interviews i JOIN applications a ON a.id = i.application_id WHERE i.id = ?', [$id]);
+        $iv || Http::abort(404);
+        [$ok, $msg] = (new Interviews($this->app))->correctRound($id, (int) ($_POST['round'] ?? 0), (int) Auth::user()['id']);
+        Http::flash($ok ? 'ok' : 'error', $msg);
+        Http::redirect($this->back("/candidates/{$iv['candidate_id']}#interviews"));
     }
 
     /** Moves a booked interview to another time, same round; the candidate and client are emailed. */

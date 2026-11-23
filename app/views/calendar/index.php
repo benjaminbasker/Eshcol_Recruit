@@ -79,12 +79,11 @@ $today = date('Y-m-d'); ?>
     <p class="small muted" style="margin-top:0">Entered once for the client and offered on all its open positions.</p>
     <form method="post" action="/calendar/times" class="cal-add"><?= csrf() ?><input type="hidden" name="back" value="<?= e($here) ?>">
       <div class="field"><label for="ct-client">Client</label><select id="ct-client" name="client" required><option value="">Choose…</option><?php foreach ($clients as $c): ?><option value="<?= (int) $c['id'] ?>"<?= selected($clientId, $c['id']) ?>><?= e($c['name']) ?></option><?php endforeach; ?></select></div>
-      <div class="field"><label for="ct-date">Date</label><input type="date" id="ct-date" name="date" min="<?= e($today) ?>" required></div>
-      <div class="field"><label>Times</label><div class="row" style="gap:6px;flex-wrap:wrap"><?php for ($i = 0; $i < 6; $i++): ?><input type="time" name="times[]" aria-label="Time <?= $i + 1 ?>" style="width:120px"><?php endfor; ?></div></div>
+      <?php $tpId = 'ct'; include __DIR__ . '/../partials/time_picker.php'; ?>
       <div class="row" style="gap:10px;flex-wrap:wrap">
+        <div class="field"><label for="ct-round">Round</label><select id="ct-round" name="round"><?php for ($r = 1; $r <= 3; $r++): ?><option value="<?= $r ?>"><?= $r ?></option><?php endfor; ?></select></div>
         <div class="field"><label for="ct-kind">Type</label><select id="ct-kind" name="kind"><?php foreach ($kinds as $k => $v): ?><option value="<?= e($k) ?>"><?= e($v) ?></option><?php endforeach; ?></select></div>
         <div class="field"><label for="ct-len">Length</label><select id="ct-len" name="duration"><?php foreach ([30, 45, 60, 90] as $m): ?><option value="<?= $m ?>"><?= $m ?> min</option><?php endforeach; ?></select></div>
-        <div class="field"><label for="ct-round">Round</label><select id="ct-round" name="round"><?php for ($r = 1; $r <= 3; $r++): ?><option value="<?= $r ?>"><?= $r ?></option><?php endfor; ?></select></div>
       </div>
       <button class="btn" type="submit">Add these times</button>
     </form>

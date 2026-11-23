@@ -42,6 +42,19 @@ $whereFields = function (array $v) use ($client): string {
         } ?></span>
         <?php if ($i['feedback']): ?><br><span class="small">&ldquo;<?= e($i['feedback']) ?>&rdquo;</span><?php endif; ?>
 
+        <?php if ($i['status'] === 'booked' && $i['starts_at'] && strtotime((string) $i['starts_at']) < time()): ?>
+          <p class="small" style="margin:6px 0 0;padding:6px 9px;border-radius:8px;background:var(--warn-tint,#FFF6E0)"><b>This time has passed.</b> If it took place, use <b>Record the result</b> (for the next round, choose "Through to round <?= (int) $i['round'] + 1 ?>" and then book it). Use <b>Change the time</b> only if this round <?= (int) $i['round'] ?> interview itself moved.</p>
+        <?php endif; ?>
+        <?php if (in_array($i['status'], ['booked', 'choosing'], true)): ?>
+          <details class="iv-act" style="margin-top:6px"><summary class="small">Wrong round? Correct it</summary>
+            <form method="post" action="/interviews/<?= (int) $i['id'] ?>/round" class="row" style="gap:6px;align-items:center;margin-top:6px"><?= csrf() ?><input type="hidden" name="back" value="<?= e($back) ?>">
+              <label class="small" for="cr-<?= (int) $i['id'] ?>">This is round</label>
+              <select id="cr-<?= (int) $i['id'] ?>" name="round"><?php for ($r = 1; $r <= 3; $r++): ?><option value="<?= $r ?>"<?= $r === (int) $i['round'] ? ' selected' : '' ?>><?= $r ?></option><?php endfor; ?></select>
+              <button class="btn small ghost" type="submit">Correct the round</button>
+              <span class="hint">Nobody is emailed. Earlier rounds are recorded as held ("Through to the next round").</span>
+            </form>
+          </details>
+        <?php endif; ?>
         <?php if ($i['status'] === 'booked'): ?>
           <div class="iv-actions">
             <details class="iv-act"><summary class="btn small">Change the time</summary>
@@ -54,7 +67,7 @@ $whereFields = function (array $v) use ($client): string {
                 </div>
                 <?= $whereFields($i) ?>
                 <button class="btn small" type="submit">Move it and tell everyone</button>
-                <span class="hint">Same interview, same round: the candidate gets the new call letter, the client is told straight away (old and new time), and their calendar entry is replaced. Change the round only to correct a mistake.</span>
+                <span class="hint">Same interview, same round: the candidate gets the new call letter, the client is told straight away (old and new time), and their calendar entry is replaced. To fix only the round, without emailing anyone, use "Wrong round? Correct it".</span>
               </form>
             </details>
             <?php if ($roundOpen): ?>

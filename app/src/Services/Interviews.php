@@ -187,6 +187,70 @@ final class Interviews
     }
 
     /**
+     * The days and times ticked on the time picker (23 Nov 2026, Benjamin: "make the fix-time interface easier"):
+     * every ticked day (date[]) at every ticked time (clock[]), plus one typed day and time. "Y-m-d H:i" strings,
+     * in order, no repeats; addSlots() still drops past ones. Pure: tested directly.
+     */
+    public static function pickedTimes(array $post): array
+    {
+        $isDate = fn ($d) => is_string($d) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $d) && strtotime($d);
+        $isClock = fn ($t) => is_string($t) && preg_match('/^([01]?\d|2[0-3]):[0-5]\d$/', trim($t));
+        $days = array_values(array_filter((array) ($post['date'] ?? []), $isDate));
+        $clocks = array_values(array_filter((array) ($post['clock'] ?? []), $isClock));
+        $other = trim((string) ($post['other_date'] ?? ''));
+        if ($isDate($other)) {
+            $days[] = $other;
+        }
+        $otherClock = trim((string) ($post['other_time'] ?? ''));
+        if ($isClock($otherClock)) {
+            $clocks[] = $otherClock;
+        }
+        $out = [];
+        foreach (array_unique($days) as $d) {
+            foreach (array_unique($clocks) as $t) {
+                $out[] = $d . ' ' . date('H:i', strtotime("$d $t"));
+            }
+        }
+        $out = array_values(array_unique($out));
+        sort($out);
+        return $out;
+    }
+
+    /**
+     * Corrects the round of a booked or invited interview without emailing anyone (23 Nov 2026: Mangesh's round 1 was
+     * moved to the round 2 date with "Change the time", so it kept saying Round 1). Raising it records the earlier
+     * rounds as held, "Through to the next round", so the stage and the next round add up. Returns [ok, message].
+     */
+    public function correctRound(int $id, int $round, int $userId): array
+    {
+        $db = $this->app->db;
+        $iv = $db->one("SELECT * FROM interviews WHERE id = ? AND status IN ('booked','choosing')", [$id]);
+        if (!$iv) {
+            return [false, 'Only an interview that is booked or waiting for a time can be corrected.'];
+        }
+        $round = max(1, min(9, $round));
+        $old = (int) $iv['round'];
+        if ($round === $old) {
+            return [true, "It is already round $round."];
+        }
+        if ($db->col("SELECT 1 FROM interviews WHERE application_id = ? AND round = ? AND id <> ? AND status IN ('booked','choosing')", [$iv['application_id'], $round, $id])) {
+            return [false, "There is already a round $round interview arranged for this position."];
+        }
+        $db->update('interviews', ['round' => $round], $id);
+        for ($r = 1; $r < $round; $r++) {
+            if (!$db->col("SELECT 1 FROM interviews WHERE application_id = ? AND round = ? AND status = 'done'", [$iv['application_id'], $r])) {
+                $db->insert('interviews', ['application_id' => $iv['application_id'], 'round' => $r, 'kind' => $iv['kind'], 'status' => 'done',
+                    'outcome' => 'next_round', 'duration_min' => $iv['duration_min'], 'created_by' => $userId ?: null]);
+            }
+        }
+        $a = $db->one('SELECT candidate_id FROM applications WHERE id = ?', [$iv['application_id']]);
+        $db->insert('notes', ['entity_type' => 'candidate', 'entity_id' => $a['candidate_id'], 'user_id' => $userId ?: null,
+            'body' => ref_interview($id) . " corrected from round $old to round $round. Nobody was emailed."]);
+        Audit::log('interview_round_corrected', 'candidate', (int) $a['candidate_id'], ['interview' => $id, 'from' => $old, 'to' => $round]);
+        return [true, "Now round $round. Nobody was emailed."];
+    }
+
+    /**
      * The next round for an application: one more than the last round that actually took place (has a result). A round
      * that is booked but hasn't happened yet is not "done" (20 Nov 2026: Deepa Rani's round 1, moved to the next day,
      * went out as round 2 because a booked round 1 counted as finished).

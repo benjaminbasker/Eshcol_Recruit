@@ -396,3 +396,26 @@ document.addEventListener('click', function (e) {
   city.addEventListener('change', refill);
   refill();
 })();
+
+// The day-and-time picker (23 Nov 2026): says what will be added, "6 times: Tue 24 Nov, Wed 25 Nov at 6:00 PM, 6:30 PM, 7:00 PM".
+(function () {
+  document.querySelectorAll('[data-time-picker]').forEach(function (tp) {
+    var out = tp.querySelector('[data-tp-summary]');
+    function txt(input) { return input.parentNode.textContent.replace(/\s*today\s*/, '').trim(); }
+    function fmtTime(v) { var p = v.split(':'), h = +p[0], m = p[1]; return ((h % 12) || 12) + ':' + m + (h < 12 ? ' AM' : ' PM'); }
+    function fmtDay(v) { var d = new Date(v + 'T00:00:00'); return isNaN(d) ? v : d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', ''); }
+    function refresh() {
+      var days = [].map.call(tp.querySelectorAll('input[name="date[]"]:checked'), txt);
+      var od = tp.querySelector('input[name="other_date"]'); if (od && od.value) { days.push(fmtDay(od.value)); }
+      var times = [].map.call(tp.querySelectorAll('input[name="clock[]"]:checked'), txt);
+      var ot = tp.querySelector('input[name="other_time"]'); if (ot && ot.value) { times.push(fmtTime(ot.value)); }
+      var n = days.length * times.length;
+      out.textContent = !days.length && !times.length ? 'Tick the days and the times the client gave you.'
+        : !days.length ? 'Now tick a day.' : !times.length ? 'Now tick the times.'
+        : n + ' time' + (n === 1 ? '' : 's') + ' will be added: ' + days.join(', ') + ' at ' + times.join(', ') + '.';
+    }
+    tp.addEventListener('change', refresh);
+    tp.addEventListener('input', refresh);
+    refresh();
+  });
+})();

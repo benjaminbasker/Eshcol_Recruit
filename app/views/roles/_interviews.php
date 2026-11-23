@@ -68,9 +68,7 @@ for ($r = 1; $r <= 3; $r++) {
         <div class="field" style="flex:0 1 150px"><label for="sl-kind">Type</label><select id="sl-kind" name="kind"><?php foreach ($kinds as $k => $v): ?><option value="<?= $k ?>"><?= $v ?></option><?php endforeach; ?></select></div>
         <div class="field" style="flex:0 1 130px"><label for="sl-dur">Length</label><select id="sl-dur" name="duration"><?php foreach ([30, 45, 60, 90] as $d): ?><option value="<?= $d ?>"<?= $d === 30 ? ' selected' : '' ?>><?= $d ?> min</option><?php endforeach; ?></select></div>
       </div>
-      <div class="row">
-        <?php for ($k = 0; $k < 5; $k++): ?><div class="field" style="flex:1 1 200px"><label for="sl-t<?= $k ?>">Time <?= $k + 1 ?></label><input type="datetime-local" id="sl-t<?= $k ?>" name="times[]" step="900"></div><?php endfor; ?>
-      </div>
+      <?php $tpId = 'sl'; include __DIR__ . '/../partials/time_picker.php'; ?>
       <button class="btn small" type="submit">Add these times</button>
       <p class="hint" style="margin:6px 0 0">Round 1 is usually virtual (the client's meeting link is used) and round 2 in person (the client's address and map link).</p>
     </form>

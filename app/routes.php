@@ -168,6 +168,7 @@ $router->post('/applications/{id}/interview/book', [\Eshcol\Ats\Controllers\Inte
 $router->post('/interviews/{id}/outcome', [\Eshcol\Ats\Controllers\InterviewController::class, 'outcome']);
 $router->post('/interviews/{id}/cancel', [\Eshcol\Ats\Controllers\InterviewController::class, 'cancel']);
 $router->post('/interviews/{id}/reschedule', [\Eshcol\Ats\Controllers\InterviewController::class, 'reschedule']);
+$router->post('/interviews/{id}/round', [\Eshcol\Ats\Controllers\InterviewController::class, 'correctRound']);
 $router->post('/interviews/{id}/choose-again', [\Eshcol\Ats\Controllers\InterviewController::class, 'chooseAgain']);
 $router->get('/interviews/{id}/letter', [\Eshcol\Ats\Controllers\InterviewController::class, 'letter']);
 $router->get('/i/{token}', [\Eshcol\Ats\Controllers\InterviewController::class, 'choose'], public: true);

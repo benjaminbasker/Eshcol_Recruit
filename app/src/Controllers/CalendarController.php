@@ -52,12 +52,12 @@ final class CalendarController extends Controller
             Http::flash('error', 'Choose a client with an open position first.');
             Http::redirect($this->back());
         }
-        $date = trim((string) ($_POST['date'] ?? ''));
-        $times = array_map(fn ($t) => $date . ' ' . trim((string) $t), array_filter((array) ($_POST['times'] ?? []), fn ($t) => preg_match('/^\d{1,2}:\d{2}$/', trim((string) $t))));
-        $n = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) ? (new Interviews($this->app))->addSlots($roleId, max(1, (int) ($_POST['round'] ?? 1)), (string) ($_POST['kind'] ?? 'virtual'),
+        // Ticked days and times (23 Nov 2026): every ticked day at every ticked time.
+        $times = Interviews::pickedTimes($_POST);
+        $n = $times ? (new Interviews($this->app))->addSlots($roleId, max(1, (int) ($_POST['round'] ?? 1)), (string) ($_POST['kind'] ?? 'virtual'),
             $times, (int) ($_POST['duration'] ?? 30), 'client') : 0;
         Audit::log('calendar_times_added', 'client', $clientId, ['n' => $n]);
-        Http::flash($n ? 'ok' : 'error', $n ? "$n time" . ($n === 1 ? '' : 's') . ' added, offered on all this client\'s open positions.' : 'No times added: choose a date and at least one time in the future.');
+        Http::flash($n ? 'ok' : 'error', $n ? "$n time" . ($n === 1 ? '' : 's') . ' added, offered on all this client\'s open positions.' : 'No times added: tick at least one day and one time in the future.');
         Http::redirect($this->back());
     }
 
