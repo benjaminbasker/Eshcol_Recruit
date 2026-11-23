@@ -73,6 +73,19 @@ $check('Level 2 is "you are here"', str_contains($t7, 'Level 2: Complete your de
 [, $h8, $t8] = TraineeTechAck::render('', null, 'staffing');
 $check('no first name: no stray comma', str_contains($t8, "You're in!") && !str_contains($t8, "You're in, !"));
 
+echo "\nWebsite applications find the position (23 Nov 2026)\n";
+$mi = new Eshcol\Ats\Services\MailIntake($app);
+$db->run("UPDATE roles SET title = ?, exp_min = 0, exp_max = 0.5 WHERE id = ?", ["Trainee Technicians $tag (Freshers)", $fresh]);
+$db->run("UPDATE roles SET title = ?, exp_min = 1, exp_max = 7, status = 'draft' WHERE id = ?", ["Trainee Technicians $tag (Experienced)", $exp]);
+$subj = "Job application — Trainee Technicians $tag, Fresh Engineering Graduates (Thiruvallur) — Madankumar Rana";
+$check('the website subject finds the Freshers position', $mi->roleFromSubject($subj) === $fresh);
+$db->run("UPDATE roles SET status = 'open' WHERE id = ?", [$exp]);
+$check('both positions open: the lower experience range takes it', $mi->roleFromSubject($subj) === $fresh);
+$check('an exact title still wins', $mi->roleFromSubject("Job application — Trainee Technicians $tag (Experienced) — Ravi") === $exp);
+$check('an unrelated subject finds nothing', $mi->roleFromSubject("Job application — Welder $tag — Ravi") === null);
+[, $h9] = $ack->render($cand, [$fresh]);
+$check('the found position gets the trainee email', str_contains($h9, 'SIDE QUEST'));
+
 echo "\nHouse rules\n";
 foreach (['no link' => $h1 . $t1 . $s1, 'link' => $h7 . $t7 . $s7] as $k => $all) {
     $check("$k: no em dashes", !str_contains($all, '—') && !str_contains($all, '&mdash;'));

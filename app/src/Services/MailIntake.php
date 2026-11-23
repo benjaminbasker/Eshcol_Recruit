@@ -297,6 +297,20 @@ final class MailIntake
                 return count($same) === 1 ? (int) $r['id'] : null;
             }
         }
+        // The title without its brackets (23 Nov 2026): the website sends "Trainee Technicians, Fresh Engineering
+        // Graduates (Thiruvallur)" for the position "Trainee Technicians (Freshers)". Longest first, whole words only.
+        // Several open positions with the same base title (Freshers and Experienced): the lowest experience range takes
+        // it, and routing by experience moves the person to the other one, as it does for any applicant.
+        $base = fn (string $t) => trim((string) preg_replace('/\s*\([^()]*\)\s*$/u', '', trim($t)));
+        $bases = array_values(array_filter($roles, fn ($r) => $base((string) $r['title']) !== trim((string) $r['title'])));
+        usort($bases, fn ($a, $b) => mb_strlen($base((string) $b['title'])) <=> mb_strlen($base((string) $a['title'])));
+        foreach ($bases as $r) {
+            $t = $base((string) $r['title']);
+            if (mb_strlen($t) >= 8 && preg_match('/(?<![\pL\pN])' . preg_quote($t, '/') . '(?![\pL\pN])/iu', $subject)) {
+                $ids = array_map(fn ($x) => (int) $x['id'], array_filter($roles, fn ($x) => mb_strtolower($base((string) $x['title'])) === mb_strtolower($t)));
+                return (int) $this->app->db->col('SELECT id FROM roles WHERE id IN (' . implode(',', $ids) . ') ORDER BY COALESCE(exp_min, 0), id LIMIT 1');
+            }
+        }
         return null;
     }
 
