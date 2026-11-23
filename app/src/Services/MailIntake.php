@@ -306,7 +306,9 @@ final class MailIntake
         usort($bases, fn ($a, $b) => mb_strlen($base((string) $b['title'])) <=> mb_strlen($base((string) $a['title'])));
         foreach ($bases as $r) {
             $t = $base((string) $r['title']);
-            if (mb_strlen($t) >= 8 && preg_match('/(?<![\pL\pN])' . preg_quote($t, '/') . '(?![\pL\pN])/iu', $subject)) {
+            // Singular or plural (23 Nov 2026): the JD asks for the subject "Trainee Technician" for "Trainee Technicians".
+            $pat = preg_match('/s$/iu', $t) ? preg_quote(mb_substr($t, 0, -1), '/') . 's?' : preg_quote($t, '/') . 's?';
+            if (mb_strlen($t) >= 8 && preg_match('/(?<![\pL\pN])' . $pat . '(?![\pL\pN])/iu', $subject)) {
                 $ids = array_map(fn ($x) => (int) $x['id'], array_filter($roles, fn ($x) => mb_strtolower($base((string) $x['title'])) === mb_strtolower($t)));
                 return (int) $this->app->db->col('SELECT id FROM roles WHERE id IN (' . implode(',', $ids) . ') ORDER BY COALESCE(exp_min, 0), id LIMIT 1');
             }

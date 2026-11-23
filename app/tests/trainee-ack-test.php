@@ -82,6 +82,13 @@ $check('the website subject finds the Freshers position', $mi->roleFromSubject($
 $db->run("UPDATE roles SET status = 'open' WHERE id = ?", [$exp]);
 $check('both positions open: the lower experience range takes it', $mi->roleFromSubject($subj) === $fresh);
 $check('an exact title still wins', $mi->roleFromSubject("Job application — Trainee Technicians $tag (Experienced) — Ravi") === $exp);
+$db->run("UPDATE roles SET title = ? WHERE id = ?", ["Zz$tag Trainee Technicians (Freshers)", $fresh]);
+$db->run("UPDATE roles SET title = ? WHERE id = ?", ["Zz$tag Trainee Technicians (Experienced)", $exp]);
+$check('the JD\'s email subject, singular "Trainee Technician", finds Freshers', $mi->roleFromSubject("Application for Zz$tag Trainee Technician - Ravi") === $fresh);
+$check('"Trainee Technicians" plural still finds it', $mi->roleFromSubject("Zz$tag Trainee Technicians CV") === $fresh);
+$check('"Trainee Technicianship" does not', $mi->roleFromSubject("Zz$tag Trainee Technicianship") === null);
+$db->run("UPDATE roles SET title = ? WHERE id = ?", ["Trainee Technicians $tag (Freshers)", $fresh]);
+$db->run("UPDATE roles SET title = ? WHERE id = ?", ["Trainee Technicians $tag (Experienced)", $exp]);
 $check('an unrelated subject finds nothing', $mi->roleFromSubject("Job application — Welder $tag — Ravi") === null);
 [, $h9] = $ack->render($cand, [$fresh]);
 $check('the found position gets the trainee email', str_contains($h9, 'SIDE QUEST'));
