@@ -152,6 +152,9 @@ final class StaffingController extends Controller
             'client_id' => $clientId, 'billing_model' => $model, 'markup_pct' => $model === 'markup' ? $num('markup_pct') : null,
             'markup_base' => ($_POST['markup_base'] ?? '') === 'cost' ? 'cost' : 'gross',
             'wage_rule' => ($_POST['wage_rule'] ?? '') === 'gross' ? 'gross' : 'law',
+            // This client's own basic share (empty = Settings › Staffing) and a bonus paid within the gross (24 Nov 2026).
+            'wage_share_pct' => ($v = $num('wage_share_pct')) !== null && $v > 0 && $v <= 100 ? round($v, 2) : null,
+            'bonus_in_gross' => !empty($_POST['bonus_in_gross']) ? 1 : 0,
             'payers' => json_encode(array_map(fn ($k) => isset(Staffing::PAYERS[$_POST['payer'][$k] ?? '']) ? $_POST['payer'][$k] : Staffing::PAYER_DEFAULTS[$k], array_combine(array_keys(Staffing::COSTS), array_keys(Staffing::COSTS)))),
             'reimburse_days' => ($v = $num('reimburse_days')) !== null ? max(0, min(90, (int) $v)) : null,
             'fixed_fee' => $model === 'fixed_fee' ? $num('fixed_fee') : null, 'gst_pct' => $num('gst_pct', 18.0),

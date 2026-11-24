@@ -193,17 +193,20 @@ final class Staffing
     public static function calc(float $gross, array $terms, ?float $billRate, array $v, ?float $minWage = null): array
     {
         $g = max(0.0, $gross);
-        $share = $g * ($v['wage_share_pct'] ?? 50) / 100;
+        // The client's own share of gross as wages, if its terms set one (HINE: 70 %, 24 Nov 2026); else the general rate.
+        $sharePct = isset($terms['wage_share_pct']) && $terms['wage_share_pct'] !== '' && $terms['wage_share_pct'] !== null ? (float) $terms['wage_share_pct'] : ($v['wage_share_pct'] ?? 50);
+        $share = $g * $sharePct / 100;
+        $bonusInGross = !empty($terms['bonus_in_gross']); // the bonus is paid monthly within the gross: nothing added on top
         // The law: basic + DA can't be below the minimum wage, so wages are at least it (never more than the gross).
         $lawWage = min($g, max($share, (float) $minWage));
         $rule = ($terms['wage_rule'] ?? 'law') === 'gross' ? 'gross' : 'law';
         $wage = $rule === 'law' ? $lawWage : $share;
-        $partsFor = function (float $wage) use ($g, $v, $minWage): array {
+        $partsFor = function (float $wage) use ($g, $v, $minWage, $bonusInGross): array {
             $pfBase = min($wage, $v['pf_ceiling'] ?? 15000);
             return [
                 'pf' => $pfBase * (($v['pf_employer_pct'] ?? 12) + ($v['pf_admin_pct'] ?? 0)) / 100,
                 'esi' => $g <= ($v['esi_ceiling'] ?? 21000) ? $g * ($v['esi_employer_pct'] ?? 3.25) / 100 : 0.0,
-                'bonus' => $wage <= ($v['bonus_eligibility'] ?? 21000) ? ($v['bonus_pct'] ?? 8.33) / 100 * min($wage, max($v['bonus_calc_ceiling'] ?? 7000, (float) $minWage)) : 0.0,
+                'bonus' => $bonusInGross ? 0.0 : ($wage <=($v['bonus_eligibility'] ?? 21000) ? ($v['bonus_pct'] ?? 8.33) / 100 * min($wage, max($v['bonus_calc_ceiling'] ?? 7000, (float) $minWage)) : 0.0),
                 'gratuity' => $wage * ($v['gratuity_pct'] ?? 4.81) / 100,
                 'leave' => $g * ($v['leave_pct'] ?? 0) / 100,
                 'lwf' => ($v['lwf_employer_year'] ?? 0) / 12,
@@ -245,7 +248,7 @@ final class Staffing
             $groups[$gk] = ['bill' => $r($sum('bill', $gk)), 'proof' => $r($sum('proof', $gk)), 'eshcol' => $r($sum('eshcol', $gk))];
         }
         return [
-            'gross' => $r($g), 'wage' => $r($wage), 'wage_rule' => $rule, 'law_wage' => $r($lawWage), 'law_extra' => $r($lawExtra),
+            'gross' => $r($g), 'wage' => $r($wage), 'wage_rule' => $rule, 'wage_share_pct' => $sharePct, 'bonus_in_gross' => $bonusInGross, 'law_wage' => $r($lawWage), 'law_extra' => $r($lawExtra),
             'parts' => array_map($r, $parts), 'payers' => $payers, 'groups' => $groups, 'cost' => $r($cost),
             'fee' => $r($fee), 'markup_base' => $model === 'markup' ? (($terms['markup_base'] ?? 'cost') === 'gross' ? 'gross' : 'cost') : null,
             'monthly_bill' => $r($monthly), 'monthly_gst' => $r($monthly * $gstPct / 100), 'reimbursed' => $r($proof),

@@ -113,6 +113,7 @@ final class Joinings
                     'notice_days' => $terms['notice_days'] !== null ? (int) $terms['notice_days'] : null,
                     'conversion_fee_pct' => ['within_6_months' => $n($terms['conv_pct_6m']), 'months_6_to_12' => $n($terms['conv_pct_12m']), 'after_12_months' => $n($terms['conv_pct_after'])],
                     'rate_revision' => $terms['rate_revision'], 'markup_base' => $terms['markup_base'] ?? null, 'wage_rule' => $terms['wage_rule'] ?? null,
+                    'wage_share_pct' => isset($terms['wage_share_pct']) ? $n($terms['wage_share_pct']) : null, 'bonus_in_gross' => !empty($terms['bonus_in_gross']),
                     'who_pays' => !empty($terms['payers']) ? (json_decode((string) $terms['payers'], true) ?: null) : null,
                     'reimburse_days' => isset($terms['reimburse_days']) ? (int) $terms['reimburse_days'] : null,
                 ] : null,

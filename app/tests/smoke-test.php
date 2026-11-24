@@ -248,6 +248,17 @@ foreach (['/candidates' => "#/candidates/$cMine\?back=%2Fcandidates%23c-$cMine\b
 [$code, $body] = $get('owner', "/candidates/$cMine?back=%2Froles%2F999999%23tab-pipeline");
 $check('from a position where his row isn\'t found: Back still lands on the section he came from', str_contains($body, 'href="/roles/999999#tab-pipeline" data-back-role="999999"'));
 
+echo "\nA client's own basic share and bonus within the gross, saved from the form (HINE, 24 Nov 2026)\n";
+[$code, $loc] = $post('owner', "/clients/$client/staffing-terms", ['_csrf' => $csrf, 'billing_model' => 'markup', 'markup_pct' => '8', 'markup_base' => 'cost', 'wage_rule' => 'gross',
+    'wage_share_pct' => '70', 'bonus_in_gross' => '1', 'gst_pct' => '18', 'invoice_timing' => 'month_end', 'payment_due_days' => '0', 'deposit_months' => '0']);
+$tr = $db->one('SELECT * FROM client_terms WHERE client_id = ? AND is_current = 1', [$client]);
+$check('saved: 8 % on the total cost, basic 70 %, bonus within the gross', $code === 303 && $tr && $tr['markup_base'] === 'cost' && (float) $tr['wage_share_pct'] === 70.0 && (int) $tr['bonus_in_gross'] === 1, "status $code");
+[$code, $body] = $get('owner', "/clients/$client");
+$check('…and the client page says so', $code === 200 && $phpError($body) === '' && str_contains($body, '<b>70 % of gross</b> (this client\'s own)') && str_contains($body, 'bonus paid monthly within the gross'));
+[$code, $loc] = $post('owner', "/clients/$client/staffing-terms", ['_csrf' => $csrf, 'billing_model' => 'markup', 'markup_pct' => '8', 'markup_base' => 'cost', 'wage_share_pct' => '', 'payment_due_days' => '0']);
+$tr = $db->one('SELECT * FROM client_terms WHERE client_id = ? AND is_current = 1', [$client]);
+$check('left empty: back to the share in Settings › Staffing, and the bonus on top again', $tr && $tr['wage_share_pct'] === null && (int) $tr['bonus_in_gross'] === 0);
+
 echo "\nSigned out\n";
 $cookie['nobody'] = 'x=y';
 [$code] = $get('nobody', "/roles/$mine");

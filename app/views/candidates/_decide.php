@@ -83,7 +83,7 @@ $nextRound = $fb ? max(array_column($fb, 'round')) : 1;
           if ($stCalc): $rs = fn ($v) => '₹' . number_format((float) $v, 2); ?>
           <div class="table-wrap"><table class="list compact" style="margin:4px 0 8px">
             <tr><td>Monthly gross pay</td><td class="num"><?= $rs($stCalc['gross']) ?></td></tr>
-            <tr><td class="small muted">Wages for PF, bonus and gratuity: <?= $stCalc['wage_rule'] === 'gross' ? 'share of gross (common practice)' : 'basic + DA, at least the minimum wage (the law)' ?></td><td class="num small muted"><?= $rs($stCalc['wage']) ?></td></tr>
+            <tr><td class="small muted">Wages for PF, bonus and gratuity: <?= $stCalc['wage_rule'] === 'gross' ? 'share of gross (common practice' . (!empty($stCalc['wage_share_pct']) ? ', ' . rtrim(rtrim(number_format((float) $stCalc['wage_share_pct'], 2), '0'), '.') . ' %' : '') . ')' . (!empty($stCalc['bonus_in_gross']) ? '; bonus paid within the gross' : '') : 'basic + DA, at least the minimum wage (the law)' ?></td><td class="num small muted"><?= $rs($stCalc['wage']) ?></td></tr>
             <?php $who = ['bill' => 'in the bill', 'proof' => 'on proof', 'eshcol' => 'Eshcol'];
             foreach (\Eshcol\Ats\Services\Staffing::GROUPS as $gk => $gl): $rows = array_filter(\Eshcol\Ats\Services\Staffing::COSTS, fn ($c, $k) => $c[1] === $gk && (float) $stCalc['parts'][$k] != 0.0, ARRAY_FILTER_USE_BOTH); if (!$rows) { continue; } ?>
               <tr><td colspan="2" class="small muted" style="padding-top:6px"><?= e($gl) ?></td></tr>

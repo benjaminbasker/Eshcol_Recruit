@@ -16,7 +16,9 @@ $safe = Staffing::safeguard($t);
       <?= $t['billing_model'] === 'markup' ? e($n2($t['markup_pct'])) . ' %' : ($t['billing_model'] === 'fixed_fee' ? '₹' . e(number_format((float) $t['fixed_fee'])) . ' per person per month' : 'set on each position') ?>
       <?= $t['billing_model'] === 'markup' ? ' on ' . e(strtolower(Staffing::MARKUP_BASE[$t['markup_base'] ?? 'cost'])) : '' ?>
       · GST <?= e($n2($t['gst_pct'])) ?> % on the gross bill</p>
-    <p class="small" style="margin:0 0 6px">Wages for PF, bonus and gratuity: <?= ($t['wage_rule'] ?? 'law') === 'gross' ? '<span class="chip flag" style="text-decoration:none">common practice</span> share of gross; the offer shows the extra cost if the law is applied' : 'the law (at least the minimum wage)' ?></p>
+    <p class="small" style="margin:0 0 6px">Wages for PF, bonus and gratuity: <?= ($t['wage_rule'] ?? 'law') === 'gross' ? '<span class="chip flag" style="text-decoration:none">common practice</span> share of gross; the offer shows the extra cost if the law is applied' : 'the law (at least the minimum wage)' ?>
+      · basic <?= isset($t['wage_share_pct']) && $t['wage_share_pct'] !== null ? '<b>' . e($n2($t['wage_share_pct'])) . ' % of gross</b> (this client\'s own)' : 'the share in Settings › Staffing' ?>
+      <?= !empty($t['bonus_in_gross']) ? '· <b>bonus paid monthly within the gross</b> (no bonus added on top)' : '' ?></p>
     <?php $tp = !empty($t['payers']) ? (json_decode((string) $t['payers'], true) ?: []) : null; ?>
     <p class="small" style="margin:0 0 6px">Who pays: <?php if ($tp === null): ?>everything in the monthly bill (terms saved before 16 Nov 2026)<?php else: $byW = []; foreach (Staffing::COSTS as $ck => [$cl]) { $byW[$tp[$ck] ?? Staffing::PAYER_DEFAULTS[$ck]][] = $cl; }
       echo implode('; ', array_map(fn ($w) => e(Staffing::PAYERS[$w]) . ': ' . e(implode(', ', $byW[$w])), array_keys(array_intersect_key(Staffing::PAYERS, $byW))));
@@ -40,6 +42,8 @@ $safe = Staffing::safeguard($t);
       <div class="field"><label for="ct-wr">Wages for PF, bonus and gratuity</label><select id="ct-wr" name="wage_rule">
         <?php foreach (Staffing::WAGE_RULES as $k => $l): ?><option value="<?= $k ?>"<?= ($t['wage_rule'] ?? 'law') === $k ? ' selected' : '' ?>><?= e($l) ?></option><?php endforeach; ?></select>
         <span class="hint">On common practice, each offer shows what it would cost more if an inspector applied the law.</span></div>
+      <div class="field" style="max-width:320px"><label for="ct-ws">Basic as a share of gross, % <span class="hint">this client's own; empty = Settings › Staffing</span></label><input type="text" inputmode="decimal" id="ct-ws" name="wage_share_pct" value="<?= e($n2($t['wage_share_pct'] ?? null)) ?>"></div>
+      <div class="field"><label><input type="checkbox" name="bonus_in_gross" value="1"<?= !empty($t['bonus_in_gross']) ? ' checked' : '' ?>> The statutory bonus is paid monthly within the gross <span class="hint">no bonus is added on top</span></label></div>
       <?php $tpf = !empty($t['payers']) ? (json_decode((string) $t['payers'], true) ?: []) : []; ?>
       <p class="small" style="margin:4px 0 4px"><b>Who pays each cost</b></p>
       <div class="table-wrap"><table class="list compact" style="margin:0 0 8px">

@@ -53,6 +53,23 @@ $check('a fixed fee adds to the cost', $near($c2['bill'] - $c2['cost'], 2500));
 $c3 = S::calc(18000, ['billing_model' => 'rate', 'gst_pct' => 18, 'wage_rule' => 'gross'], 22000, $v, 12500);
 $check('a monthly bill rate: margin is the rate less the cost', $near($c3['bill'], 22000) && $near($c3['margin'], 22000 - 20937.60));
 
+echo "\nHINE: the client's own basic share and a bonus paid within the gross (24 Nov 2026)\n";
+// ₹21,500 gross: basic 70 % = 15,050 (HINE only; everyone else stays on the general 50 %), HRA 27 %, bonus 3 % paid monthly
+// inside the gross. 8 % on the total cost; PF ceiling ₹25,000; LWF ₹40 a year; Skilled Zone B minimum wage ₹15,955.
+// PF 13 % of 15,050 = 1,956.50 (employer 1,806 + admin/EDLI 150.50); gratuity 4.81 % = 723.91; LWF 3.33; no ESI (over ₹21,000);
+// no bonus on top. Cost 24,183.74; fee 8 % = 1,934.70; bill 26,118.44.
+$hine = ['billing_model' => 'markup', 'markup_pct' => 8, 'markup_base' => 'cost', 'wage_rule' => 'gross', 'wage_share_pct' => '70.00', 'bonus_in_gross' => 1, 'gst_pct' => 18,
+    'payers' => json_encode(['pf' => 'proof', 'esi' => 'proof', 'insurance' => 'bill', 'bonus' => 'bill', 'leave' => 'bill', 'lwf' => 'bill', 'gratuity' => 'bill'])];
+$vH = ['pf_ceiling' => 25000, 'lwf_employer_year' => 40] + $v;
+$h = S::calc(21500, $hine, null, $vH, 15955);
+$check('basic is HINE\'s own 70 %: ₹15,050', $near($h['wage'], 15050) && $h['wage_share_pct'] == 70.0);
+$check('PF and charges 13 % of 15,050 = ₹1,956.50; gratuity ₹723.91; no ESI', $near($h['parts']['pf'], 1956.50) && $near($h['parts']['gratuity'], 723.91) && $h['parts']['esi'] == 0);
+$check('the bonus is inside the gross: nothing added on top', $h['parts']['bonus'] == 0 && $h['bonus_in_gross'] === true);
+$check('8 % on the total cost: cost ₹24,183.74, fee ₹1,934.70, bill ₹26,118.44', $near($h['cost'], 24183.74) && $near($h['fee'], 1934.70) && $near($h['bill'], 26118.44));
+$other = S::calc(21500, ['wage_share_pct' => null, 'bonus_in_gross' => 0] + $hine, null, $vH, 15955);
+$check('a client with no share of its own: the general 50 % (₹10,750), and the bonus added', $near($other['wage'], 10750) && $other['parts']['bonus'] > 0);
+$check('terms saved before update 078 (no such fields): as before', $near(S::calc(21500, ['markup_base' => 'cost', 'wage_rule' => 'gross'] + array_diff_key($hine, ['wage_share_pct' => 1, 'bonus_in_gross' => 1]), null, $vH, 15955)['wage'], 10750));
+
 echo "\nThe wages rule (16 Nov 2026)\n";
 // ₹18,000 gross, Tamil Nadu minimum wage ₹15,400 (Unskilled Zone B: 7,650 + 7,750), PF ceiling ₹25,000.
 $v25 = ['pf_ceiling' => 25000] + $v;
