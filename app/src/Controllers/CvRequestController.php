@@ -8,6 +8,7 @@ use Eshcol\Ats\Http;
 use Eshcol\Ats\Services\CandidateImporter;
 use Eshcol\Ats\Services\CvRequests;
 use Eshcol\Ats\Services\Questionnaires;
+use Eshcol\Ats\Services\SelfRemoval;
 use Eshcol\Ats\View;
 
 /**
@@ -73,13 +74,27 @@ final class CvRequestController extends Controller
         $this->public('cvrequest/remove', ['token' => (string) $token, 'first' => $this->first($r)]);
     }
 
+    /**
+     * Their confirmed "Delete my details" (24 Nov 2026): deleted at once unless they are in a live process with a
+     * client, when all contact stops and you close it within 30 days. See SelfRemoval.
+     */
     public function remove(string|int $token): never
     {
-        $r = $this->usable((string) $token);
-        $this->svc()->answer($r, 'remove');
+        $token = (string) $token;
+        $r = $this->usable($token);
+        $first = $this->first($r);
+        $outcome = (new SelfRemoval($this->app))->fromLink($r, $token);
+        if ($outcome === 'held') {
+            $this->public('cvrequest/done', [
+                'heading' => 'Thank you' . ($first !== '' ? ", $first" : '') . '. We have stopped all contact.',
+                'body' => 'You are part of a hiring process with one of our clients right now, so we will close it properly and then delete your details within '
+                    . SelfRemoval::CLOSE_WITHIN_DAYS . ' days. We will not contact you again. The employer you are in process with may be told that you have withdrawn.',
+                'linkedin' => false,
+            ]);
+        }
         $this->public('cvrequest/done', [
-            'heading' => 'Thank you for letting us know.',
-            'body' => 'We will delete your details and will not contact you again. If you apply for a role with us in future, we will start afresh.',
+            'heading' => 'Your details have been deleted.',
+            'body' => 'As you asked, we have deleted your CV and the details we held about you, and we will not contact you again. We have sent a short confirmation to your email address. If you apply for a role with us in future, we will start afresh.',
             'linkedin' => false,
         ]);
     }
@@ -109,6 +124,10 @@ final class CvRequestController extends Controller
     private function usable(string $token): array
     {
         $r = $this->svc()->byToken($token);
+        if (!$r && ($when = (new SelfRemoval($this->app))->linkUsed($token))) {
+            $this->public('questionnaire/message', ['heading' => 'Your details have been deleted',
+                'body' => 'You asked us on ' . nice_date($when) . ' to delete your details, and we did. There is nothing more to do here. If you apply for a role with us in future, we will start afresh.']);
+        }
         if (!$r) {
             $this->public('questionnaire/message', ['heading' => 'This link isn\'t valid any more',
                 'body' => 'Please check you copied the whole link from the email. You can also simply reply to our email with your CV attached.'], 404);

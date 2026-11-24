@@ -157,6 +157,12 @@ final class DashboardController extends Controller
         $removals = (int) $this->db->col('SELECT COUNT(*) FROM candidates WHERE removal_requested_at IS NOT NULL');
         if ($removals && (\Eshcol\Ats\Auth::user()['role'] ?? '') === 'owner') {
             $alerts[] = ['info', "$removals candidate" . ($removals > 1 ? 's' : '') . ' asked us not to keep their details. <a href="/candidates?removal=1">Review</a>.'];
+            // 24 Nov 2026: those in a live process were told "within 30 days".
+            if ($heldRm = (new \Eshcol\Ats\Services\SelfRemoval($this->app))->heldList()) {
+                $by = $heldRm[0]['close_by'];
+                $alerts[] = [$by <= date('Y-m-d', strtotime('+7 days')) ? 'warn' : 'info', count($heldRm) . ' of them ' . (count($heldRm) > 1 ? 'are' : 'is')
+                    . ' in a live process with a client. Tell the client they have withdrawn, then delete them: the first by <b>' . e(date('j M', strtotime($by))) . '</b>. <a href="/candidates?removal=1">Review</a>.'];
+            }
         }
         $held = (int) $this->db->col("SELECT COUNT(*) FROM email_queue WHERE status = 'held'");
         if ($held) {
@@ -188,7 +194,10 @@ final class DashboardController extends Controller
             && $this->db->col("SELECT 1 FROM email_queue WHERE kind <> 'test' LIMIT 1")) {
             $alerts[] = ['info', 'Emails are in <b>test mode</b>: they are written to the server, not sent. Switch them on in <a href="/settings#email">Settings › Email</a> when you are ready.'];
         }
-        $this->view('dashboard/index', ['title' => 'My day', 'stats' => $stats, 'roles' => $roles, 'recent' => $recent, 'alerts' => $alerts,
+        $ai = new \Eshcol\Ats\Services\AiReading($this->app);
+        $scanAlerts = \Eshcol\Ats\Services\AiReading::scanAlerts($stats['needs_text'], (int) $this->db->col("SELECT COUNT(*) FROM cv_ai_reads WHERE status = 'pending'"),
+            $ai->usedThisMonth(), $ai->limit(), \Eshcol\Ats\Services\AiReading::enabled($this->app), (\Eshcol\Ats\Auth::user()['role'] ?? '') === 'owner');
+        $this->view('dashboard/index', ['title' => 'My day', 'stats' => $stats, 'scanAlerts' => $scanAlerts, 'roles' => $roles, 'recent' => $recent, 'alerts' => $alerts,
             'view' => $view, 'schedule' => $this->schedule(), 'todo' => $this->todo(), 'pipes' => $this->pipes(array_column($roles, 'id')),
             'resp' => $this->responsesBoard(), 'interviewsWeek' => (int) $this->db->col("SELECT COUNT(*) FROM interviews i JOIN applications a ON a.id = i.application_id JOIN roles r ON r.id = a.role_id WHERE i.status IN ('booked','done') AND YEARWEEK(i.starts_at, 1) = YEARWEEK(CURDATE(), 1) AND {$this->scope}")]);
     }

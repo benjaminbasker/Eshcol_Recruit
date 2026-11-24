@@ -89,6 +89,13 @@ $person = function (string $name, int $roleId) use ($imp, $tmp, $owner, $tag, $d
 [$cMine, $aMine, $fMine] = $person('Smoke Mineonly', $mine);
 [$cOther, $aOther] = $person('Smoke Otherrole', $other);
 @unlink($tmp);
+// "Remove my details" (24 Nov 2026): one person asked, a working link to the confirm page, and a used link.
+$db->run('UPDATE candidates SET removal_requested_at = NOW() WHERE id = ?', [$cOther]);
+$rmTok = 'smoke' . bin2hex(random_bytes(12));
+$db->insert('cv_requests', ['candidate_id' => $cOther, 'grp' => 2, 'token_hash' => hash('sha256', $rmTok), 'token_enc' => 'x', 'status' => 'sent', 'sent_at' => date('Y-m-d H:i:s')]);
+$usedTok = 'smokeused' . bin2hex(random_bytes(12));
+$db->run('INSERT INTO removed_links (token_hash) VALUES (?)', [hash('sha256', $usedTok)]);
+register_shutdown_function(fn () => $db->run('DELETE FROM removed_links WHERE token_hash = ?', [hash('sha256', $usedTok)]));
 $short = (new Shortlists($app))->create($mine, [[$aMine, 'Good fit']], 'Client Person', "client.$tag@clients.test", '', '', true, $owner);
 $rec = $db->insert('users', ['name' => "Smoke Recruiter $tag", 'email' => "rec.$tag@smoke.test", 'role' => 'recruiter', 'password_hash' => 'x', 'is_active' => 1]);
 $con = $db->insert('users', ['name' => "Smoke Contractor $tag", 'email' => "con.$tag@smoke.test", 'role' => 'contractor', 'password_hash' => 'x', 'is_active' => 1]);
@@ -142,6 +149,7 @@ $pages = [
     ["/roles/$mine", 200, $titleMine], ["/roles/$mine?view=board", 200, 'Smoke Mineonly'], ["/roles/$mine?view=list", 200, 'Smoke Mineonly'],
     ["/roles/$mine?part=claude", 200, ''], ["/roles/$mine/edit", 200, ''], ["/roles/$mine/matches", 200, ''], ["/roles/$mine/post", 200, ''],
     ["/roles/$mine/questions", 200, ''], ["/roles/$mine/shortlist/new", 200, ''],
+    ['/candidates?scans=1', 200, 'scan or photo'], ['/candidates?removal=1', 200, 'Smoke Otherrole'],['/candidates?removal=1', 200, 'Delete the ticked'],["/u/$rmTok/remove", 200, 'Delete my details permanently'], ["/u/$usedTok", 200, 'Your details have been deleted'],
     ['/candidates', 200, 'Smoke Mineonly'], ["/candidates/$cMine", 200, 'Add interview feedback'], ["/candidates/$cMine/edit", 200, ''],
     ["/candidates/$cMine/whatsapp", 303, ''], ["/candidates/$cMine/data", 200, ''], ["/cv/$fMine", 200, ''], ["/applications/$aMine/why", 200, ''],
     ["/shortlists/$short", 200, 'Smoke Mineonly'], ["/shortlists/$short/email", 200, ''],

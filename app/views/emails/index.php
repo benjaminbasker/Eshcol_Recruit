@@ -1,6 +1,6 @@
 <?php
 $labels = ['held' => 'Waiting for you', 'pending' => 'Queued', 'sent' => 'Sent', 'failed' => 'Failed'] + (($counts['unsure'] ?? 0) || $tab === 'unsure' ? ['unsure' => 'Unsure'] : []);
-$kinds = ['ack' => 'Thank-you', 'test' => 'Test', 'interview' => 'Interview', 'rejection' => 'Regret', 'questionnaire' => 'Details request', 'digest' => 'Summary', 'shortlist' => 'Shortlist', 'client_reply' => 'Client reply', 'message' => 'Message'];
+$kinds = ['ack' => 'Thank-you', 'test' => 'Test', 'interview' => 'Interview', 'rejection' => 'Regret', 'questionnaire' => 'Details request', 'digest' => 'Summary', 'shortlist' => 'Shortlist', 'client_reply' => 'Client reply', 'message' => 'Message', 'removal_done' => 'Details deleted'];
 ?>
 <div class="page-head">
   <div><p class="eyebrow">Outgoing</p><h1>Emails</h1>

@@ -98,25 +98,29 @@ $cur = $query(); ?>
     <?php if ($filtered): ?><a class="btn ghost" href="/candidates">Clear all</a><?php endif; ?>
     <a class="btn ghost" href="/candidates?future=1"<?= $f['future'] === '1' ? ' aria-current="page"' : '' ?>><span class="chip keep" style="margin:0">Kept for a future requirement</span></a>
   </div>
+  <?php if (($f['scans'] ?? '') === '1'): ?><p class="hint" style="margin:10px 0 0">Showing people with a CV that is a scan or photo. Claude writes out their text by itself, within this month's limit in Settings › AI reading.</p><input type="hidden" name="scans" value="1"><?php endif; ?>
   <?php if ($f['future'] === '1'): ?><p class="hint" style="margin:10px 0 0">Showing people you kept for a future requirement on any role. Open one to read your note on why they are worth keeping.</p><input type="hidden" name="future" value="1"><?php endif; ?>
   <?php if ($f['unreliable'] === '1'): ?><p class="hint" style="margin:10px 0 0">Showing people marked unreliable: they did not turn up, stopped responding, or backed out. They are left out of searches, shortlists, screening and interview invitations.</p><input type="hidden" name="unreliable" value="1"><?php endif; ?>
-  <?php if ($f['removal'] === '1'): ?><p class="hint" style="margin:10px 0 0">Showing people who asked us not to keep their details. Open each one and delete them (choosing "they asked to be removed") once they are no longer needed for a role in progress.</p><input type="hidden" name="removal" value="1"><?php endif; ?>
+  <?php if ($f['removal'] === '1'): ?><p class="hint" style="margin:10px 0 0">Showing people who asked us not to keep their details. Tick them and use "Delete the ticked" below, or open one and delete it there. Anyone in a live process with a client is marked: close that first, and delete them within 30 days.</p><input type="hidden" name="removal" value="1"><?php endif; ?>
   <?php if ($numFilter): ?><p class="hint" style="margin:10px 0 0">Experience is counted to today: if a CV said 6 years two years ago, it counts as 8. Candidates whose experience, notice or salary isn't known are left out of those filters; fill them in on the candidate page to include them.</p><?php endif; ?>
 </form>
 
 <?php if (!$rows): ?>
   <div class="card empty"><?= $filtered ? 'Nobody matches that yet. Try widening the experience range or clearing a filter.' : 'No candidates yet. <a href="/upload">Upload some CVs</a> to get started.' ?></div>
 <?php else: ?>
-  <form method="post" action="/candidates/bulk-add"><?= csrf() ?>
+  <?php $removalMode = $f['removal'] === '1'; $isOwner = (\Eshcol\Ats\Auth::user()['role'] ?? '') === 'owner';
+    $liveWhy = $removalMode ? array_combine(array_column($rows, 'id'), array_map(fn ($c) => (new \Eshcol\Ats\Services\SelfRemoval(\Eshcol\Ats\App::get()))->liveProcess((int) $c['id']), $rows)) : []; ?>
+  <form method="post" action="<?= $removalMode ? '/candidates/bulk-delete' : '/candidates/bulk-add' ?>"><?= csrf() ?>
     <input type="hidden" name="back" value="/candidates?<?= e($query(['page' => $page > 1 ? $page : ''])) ?>">
     <div class="table-wrap"><table class="list">
       <?php $kfAll = (new \Eshcol\Ats\Services\KeyFacts(\Eshcol\Ats\App::get()))->forCandidates(array_column($rows, 'id')); ?>
       <thead><tr><th style="width:34px"><input type="checkbox" data-all aria-label="Select all on this page"></th><th>Candidate</th><th>Positions <span class="hint">and stage</span></th><th>Current position</th><th>Experience today</th><th>Level</th><th>Location</th><th>Qualification</th><th>Notice</th><th>Salary <span class="hint">now → expects</span></th><th>Details</th><th>CV</th><th>Added</th></tr></thead>
       <tbody><?php foreach ($rows as $c): $sk = $c['skills'] ? explode('|', $c['skills']) : []; $m = exp_now($c); $kf = $kfAll[(int) $c['id']] ?? []; ?>
         <tr>
-          <td><?php if (!$c['do_not_contact'] && empty($c['unreliable_at'])): ?><input type="checkbox" name="ids[]" value="<?= (int) $c['id'] ?>" aria-label="Select <?= e($c['full_name'] ?: 'candidate') ?>"><?php endif; ?></td>
+          <td><?php if ($removalMode ? $isOwner : (!$c['do_not_contact'] && empty($c['unreliable_at']))): ?><input type="checkbox" name="ids[]" value="<?= (int) $c['id'] ?>" aria-label="Select <?= e($c['full_name'] ?: 'candidate') ?>"><?php endif; ?></td>
           <td><a href="/candidates/<?= $c['id'] ?>"><b><?= e($c['full_name'] ?: 'Name not found') ?></b></a> <span class="ref small"><?= ref_candidate($c['id']) ?></span>
             <?php if ($c['do_not_contact']): ?> <span class="badge cancelled">do not contact</span><?php endif; ?>
+            <?php if (!empty($liveWhy[(int) $c['id']])): ?> <span class="badge" title="<?= e(implode('; ', $liveWhy[(int) $c['id']])) ?>">in a live process: close first</span><?php endif; ?>
             <?php if (!empty($c['unreliable_at'])): ?> <span class="badge cancelled" title="<?= e(\Eshcol\Ats\Services\Reliability::describe($c)) ?>">unreliable</span><?php endif; ?>
             <?php if ($sk): ?><br><?php foreach (array_slice($sk, 0, 3) as $s): ?><span class="chip"><?= e($s) ?></span><?php endforeach; ?><?= count($sk) > 3 ? '<span class="small muted">+' . (count($sk) - 3) . '</span>' : '' ?><?php endif; ?>
             <?php if ($c['keep_note']): ?><br><span class="chip sand"><?= e($c['keep_note']) ?></span><?php endif; ?></td>
@@ -135,7 +139,18 @@ $cur = $query(); ?>
         </tr>
       <?php endforeach; ?></tbody>
     </table></div>
-    <?php if ($opts['roles']): ?>
+    <?php if ($removalMode): ?>
+      <?php if ($isOwner): ?>
+      <div class="card bulk-bar">
+        <div class="row" style="align-items:flex-end">
+          <div class="field" style="flex:1 1 200px;margin:0"><label for="bulk-confirm">Type DELETE to confirm</label>
+            <input id="bulk-confirm" name="confirm" autocomplete="off" placeholder="DELETE"></div>
+          <div><button class="btn danger" type="submit">Delete the ticked</button></div>
+        </div>
+        <p class="hint" style="margin:8px 0 0">Deletes them permanently, including their CV files; only the "once asked to be removed" marker stays. Anyone in a live process with a client (shortlisted or further) is skipped and listed, so you can close it first.</p>
+      </div>
+      <?php endif; ?>
+    <?php elseif ($opts['roles']): ?>
       <div class="card bulk-bar">
         <div class="row" style="align-items:flex-end">
           <div class="field" style="flex:2 1 260px;margin:0"><label for="bulk-role">Add the ticked candidates to</label>

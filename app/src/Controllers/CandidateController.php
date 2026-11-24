@@ -17,7 +17,7 @@ final class CandidateController extends Controller
     public function index(): never
     {
         $f = [];
-        foreach (['q', 'skill', 'position', 'level', 'qualification', 'location', 'source', 'added', 'sort', 'exp_min', 'exp_max', 'notice_max', 'ctc_max', 'removal', 'unreliable', 'future',
+        foreach (['q', 'skill', 'position', 'level', 'qualification', 'location', 'source', 'added', 'sort', 'exp_min', 'exp_max', 'notice_max', 'ctc_max', 'removal', 'unreliable', 'future', 'scans',
                 'function', 'seniority', 'open_to', 'uncategorised', 'responded'] as $k) {
             $f[$k] = trim((string) ($_GET[$k] ?? ''));
         }
@@ -109,6 +109,9 @@ final class CandidateController extends Controller
         }
         if ($f['removal'] === '1') {
             $where[] = 'c.removal_requested_at IS NOT NULL';
+        }
+        if ($f['scans'] === '1') { // 24 Nov 2026: "See who" on the My day scanned-CV note
+            $where[] = "c.id IN (SELECT candidate_id FROM cv_files WHERE text_status <> 'ok')";
         }
         if (in_array($f['added'], ['7', '30', '90', '365'], true)) {
             $where[] = 'c.created_at >= NOW() - INTERVAL ' . (int) $f['added'] . ' DAY';
@@ -560,6 +563,33 @@ final class CandidateController extends Controller
         (new Retention($this->app))->delete($id, $requested ? 'requested' : 'manual', $requested);
         Http::flash('ok', 'Deleted permanently, including their CV files' . ($requested ? '. If they apply again, you will be told they once asked to be removed.' : '.'));
         Http::redirect('/candidates');
+    }
+
+    /**
+     * "Delete the ticked" on the removal list (24 Nov 2026): owner only, type DELETE. Only people who asked to be
+     * removed; anyone still in a live process with a client is skipped and named.
+     */
+    public function bulkDelete(): never
+    {
+        Auth::requireOwner();
+        $back = '/candidates?removal=1';
+        if (($_POST['confirm'] ?? '') !== 'DELETE') {
+            Http::flash('error', 'Type DELETE to confirm. Nothing was deleted.');
+            Http::redirect($back);
+        }
+        $ids = array_map('intval', (array) ($_POST['ids'] ?? []));
+        if (!$ids) {
+            Http::flash('error', 'Tick at least one candidate.');
+            Http::redirect($back);
+        }
+        $res = (new \Eshcol\Ats\Services\SelfRemoval($this->app))->bulk($ids, (int) Auth::user()['id']);
+        $msg = $res['deleted'] . ' deleted permanently, including their CV files. If they apply again, you will be told they once asked to be removed.';
+        if ($res['skipped']) {
+            $msg .= ' Not deleted, because they are in a live process: ' . implode('; ', array_map(fn ($s) => $s['name'] . ' (' . implode(', ', $s['why']) . ')', $res['skipped']))
+                . '. Close those with the client first, then delete them.';
+        }
+        Http::flash($res['skipped'] && !$res['deleted'] ? 'error' : 'ok', $msg);
+        Http::redirect($back);
     }
 
     /**

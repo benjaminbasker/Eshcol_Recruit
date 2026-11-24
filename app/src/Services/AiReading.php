@@ -61,6 +61,27 @@ final class AiReading
         return max(0, (int) $this->app->setting('ai_read_monthly_limit', '600'));
     }
 
+    /**
+     * The My day note about scanned CVs (24 Nov 2026). The "Read scanned CV" button went on 15 Nov (Claude writes out
+     * scans by itself), so this points to Settings › AI reading, and says so plainly when this month's limit stops it.
+     * @return list<array{0:string,1:string}> [type, html] alerts, fixed text only
+     */
+    public static function scanAlerts(int $scans, int $waiting, int $used, int $limit, bool $enabled, bool $owner): array
+    {
+        $out = [];
+        $list = ' <a href="/candidates?scans=1">See who</a>.';
+        if ($owner && $waiting > 0 && $limit > 0 && $used >= $limit) {
+            $out[] = ['error', "This month's limit of " . number_format($limit) . ' CV readings is reached: ' . number_format($waiting) . ' CV' . ($waiting === 1 ? ' is' : 's are')
+                . ' waiting. Raise it in <a href="/settings/ai-reading">Settings › AI reading</a>.'];
+        }
+        if ($scans > 0) {
+            $what = $scans . ' CV' . ($scans === 1 ? ' is a scan or photo' : 's are scans or photos');
+            $out[] = ['info', $enabled ? "$what waiting for Claude to write out their text." . $list
+                : "$what that couldn't be read automatically. Turn on Claude reading in " . ($owner ? '<a href="/settings/ai-reading">Settings › AI reading</a>' : 'Settings › AI reading (owner)') . ' to have them written out.' . $list];
+        }
+        return $out;
+    }
+
     public function usedThisMonth(): int
     {
         return (int) $this->app->setting('ai_read_count_' . date('Ym'), '0');

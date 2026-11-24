@@ -46,9 +46,9 @@ $restAlerts = array_slice($alerts, 3); ?>
 <?php foreach ($restAlerts as [$type, $html]): ?>
   <div class="flash <?= e($type) ?>"><?= icon($type === 'error' ? 'alert' : 'bell', 'sm') ?><div><?= $html ?></div></div>
 <?php endforeach; ?>
-<?php if ($stats['needs_text']): ?>
-  <div class="flash info"><?= icon('file', 'sm') ?><div><?= $stats['needs_text'] ?> CV<?= $stats['needs_text'] > 1 ? 's are' : ' is' ?> a scan or photo that couldn't be read automatically. Open the candidate and use <b>Read scanned CV</b>.</div></div>
-<?php endif; ?>
+<?php foreach ($scanAlerts ?? [] as [$type, $html]): ?>
+  <div class="flash <?= e($type) ?>"><?= icon($type === 'error' ? 'alert' : 'file', 'sm') ?><div><?= $html /* fixed text from AiReading::scanAlerts */ ?></div></div>
+<?php endforeach; ?>
 
 <?php if (!empty($resp)): $periods = ['today' => 'Today', 'week' => 'Week to date', 'month' => 'Month to date']; ?>
 <section class="card resp-board">

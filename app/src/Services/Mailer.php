@@ -152,6 +152,10 @@ final class Mailer
         try {
             $providerId = $this->transport ? ($this->transport)($row) : ($this->live() ? $this->viaBrevo($row) : $this->toOutbox($row));
             $db->run("UPDATE email_queue SET status = 'sent', sent_at = NOW(), provider_id = ?, attempts = attempts + 1, last_error = NULL WHERE id = ?", [$providerId, $row['id']]);
+            if (!empty(json_decode((string) ($row['meta'] ?? ''), true)['forget'])) {
+                // "Your details have been deleted" (24 Nov 2026): the person is gone, so their address goes too once it is sent.
+                $db->run("UPDATE email_queue SET to_email = '(deleted)', to_name = NULL, html = NULL, text = NULL WHERE id = ?", [$row['id']]);
+            }
             if (!str_starts_with($providerId, 'outbox:')) {
                 // Brevo took it: the key works (and is "in use", which keeps Brevo from switching it off after 90 idle days).
                 $db->run("DELETE FROM settings WHERE k = 'mail_key_problem'");
@@ -177,6 +181,9 @@ final class Mailer
             $db->run('UPDATE email_queue SET attempts = ?, last_error = ?, status = ?, not_before = NOW() + INTERVAL ? MINUTE WHERE id = ?',
                 [$attempts, mb_substr($e->getMessage(), 0, 255), $giveUp ? 'failed' : 'pending', 10 * $attempts * $attempts, $row['id']]);
             if ($giveUp) {
+                if (!empty(json_decode((string) ($row['meta'] ?? ''), true)['forget'])) {
+                    $db->run("UPDATE email_queue SET to_email = '(deleted)', to_name = NULL, html = NULL, text = NULL WHERE id = ?", [$row['id']]);
+                }
                 Audit::log('email_failed', 'email', (int) $row['id'], ['kind' => $row['kind']]);
             }
             return false;

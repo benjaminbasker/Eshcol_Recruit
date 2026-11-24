@@ -86,6 +86,7 @@ $router->post('/candidates/{id}/category/now', [\Eshcol\Ats\Controllers\Category
 // Candidates and applications
 $router->get('/candidates', [CandidateController::class, 'index']);
 $router->post('/candidates/bulk-add', [CandidateController::class, 'bulkAdd']);
+$router->post('/candidates/bulk-delete', [CandidateController::class, 'bulkDelete']);
 $router->get('/candidates/{id}', [CandidateController::class, 'show']);
 $router->get('/candidates/{id}/whatsapp', [CandidateController::class, 'whatsapp']);
 $router->get('/candidates/{id}/edit', [CandidateController::class, 'edit']);
