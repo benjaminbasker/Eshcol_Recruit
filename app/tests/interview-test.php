@@ -327,4 +327,25 @@ $check('the drop-down offers Client interview · Round 1, 2 and 3, with Round 2 
 $check('the round on the tags only shows at Client interview', \Eshcol\Ats\Services\KeyFacts::stageName($app, 'Shortlisted', (int) \Eshcol\Ats\Services\Stages::id($app, \Eshcol\Ats\Services\Stages::SHORTLISTED), 2) === 'Shortlisted');
 $db->run('DELETE FROM shortlist_items WHERE shortlist_id = ?', [$sl]);
 $db->run('DELETE FROM shortlists WHERE id = ?', [$sl]);
+
+echo "\n\"How did it go?\" on My day (24 Nov 2026: Benjamin moved four people to Rejected by client and they stayed on the list)\n";
+$past = fn (int $appId, int $round, string $when) => $db->insert('interviews', ['application_id' => $appId, 'round' => $round, 'status' => 'booked', 'starts_at' => date('Y-m-d H:i:s', strtotime($when)), 'duration_min' => 30]);
+$roleOnly = "r.id = $role";
+$waiting = fn () => array_map('intval', array_column(Interviews::awaitingOutcome($db, $roleOnly, 50), 'id'));
+[, $ha] = $person('Hari Outcometest');
+$db->run('UPDATE applications SET stage_id = ? WHERE id = ?', [$sidIv, $ha]);
+$hIv = $past($ha, 1, '-2 days');
+$check('a round that took place with no result yet is on the list', in_array($hIv, $waiting(), true));
+$db->run('UPDATE applications SET stage_id = ? WHERE id = ?', [(int) $db->col("SELECT id FROM stages WHERE name = 'Rejected by client'"), $ha]);
+$check('moved to "Rejected by client" by their stage: it leaves the list', !in_array($hIv, $waiting(), true));
+$db->run('UPDATE applications SET stage_id = ? WHERE id = ?', [(int) \Eshcol\Ats\Services\Stages::id($app, \Eshcol\Ats\Services\Stages::OFFER), $ha]);
+$check('moved to "Offer made" by their stage: not asked either', !in_array($hIv, $waiting(), true));
+[, $ia] = $person('Ira Outcometest');
+$db->run('UPDATE applications SET stage_id = ? WHERE id = ?', [$sidIv, $ia]);
+$i1 = $past($ia, 1, '-6 days');
+$i2 = $past($ia, 2, '-5 days');
+$w = $waiting();
+$check('round 2 has happened: only round 2 is asked about, not round 1 as well (Deepa Rani was listed twice)', !in_array($i1, $w, true) && in_array($i2, $w, true));
+$svc->outcome($i2, 'not_selected', '', $uid);
+$check('recording the result clears it', !in_array($i2, $waiting(), true));
 exit(0);

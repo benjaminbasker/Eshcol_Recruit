@@ -897,6 +897,25 @@ final class Interviews
         return $due ? count($due) . ' interview reminder(s) queued' : '';
     }
 
+    /**
+     * Interviews that have taken place and still wait for "How did it go?" (My day: Waiting on you, and Today).
+     * 24 Nov 2026: left out once the person has been moved on by their stage instead (Rejected by client,
+     * Not suitable, Withdrew, or anything past Client interview such as Offer made), and an earlier round once a later
+     * round exists for the same position. Before, those stayed on the list for ever. $scope is the My day filter SQL.
+     */
+    public static function awaitingOutcome(\Eshcol\Ats\Db $db, string $scope = '1=1', int $limit = 5): array
+    {
+        return $db->all("
+            SELECT i.id, i.round, i.starts_at, a.candidate_id, c.full_name, r.title
+            FROM interviews i JOIN applications a ON a.id = i.application_id JOIN stages s ON s.id = a.stage_id
+                 JOIN candidates c ON c.id = a.candidate_id JOIN roles r ON r.id = a.role_id
+            WHERE i.status = 'booked' AND i.starts_at < NOW() - INTERVAL i.duration_min MINUTE AND s.kind IN ('active','hold')
+              AND s.sort <= COALESCE((SELECT MAX(x.sort) FROM stages x WHERE x.code = 'interview'), s.sort)
+              AND NOT EXISTS (SELECT 1 FROM interviews l WHERE l.application_id = i.application_id AND l.round > i.round AND l.status IN ('choosing','booked','done'))
+              AND $scope
+            ORDER BY i.starts_at LIMIT " . max(1, $limit));
+    }
+
     /** Records how a round went. Selected → "Offer made"; not selected → "Not suitable". */
     /**
      * Returns a note for the person recording it when the stage could not move (e.g. the offer still needs approval),

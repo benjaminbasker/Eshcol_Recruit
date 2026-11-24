@@ -267,11 +267,7 @@ final class DashboardController extends Controller
                       'sub' => 'Invite them to choose an interview time', 'url' => "/roles/{$r['role_id']}#interviews", 'cta' => 'Invite'];
         }
         // Interviews that have happened but have no outcome yet.
-        foreach ($this->db->all("
-            SELECT i.id, i.round, i.starts_at, a.candidate_id, c.full_name, r.title
-            FROM interviews i JOIN applications a ON a.id = i.application_id JOIN candidates c ON c.id = a.candidate_id JOIN roles r ON r.id = a.role_id
-            WHERE i.status = 'booked' AND i.starts_at < NOW() - INTERVAL i.duration_min MINUTE AND {$this->scope}
-            ORDER BY i.starts_at LIMIT 5") as $r) {
+        foreach (\Eshcol\Ats\Services\Interviews::awaitingOutcome($this->db, $this->scope) as $r) {
             $out[] = ['icon' => 'clipboard', 'tone' => 'warn', 'title' => "How did {$r['full_name']}'s round {$r['round']} go?",
                       'sub' => $r['title'] . ' · ' . nice_date($r['starts_at']), 'url' => "/candidates/{$r['candidate_id']}#interviews", 'cta' => 'Record outcome'];
         }
