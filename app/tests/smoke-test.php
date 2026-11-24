@@ -199,6 +199,48 @@ foreach ($refused as $path) {
     $check("$path refused", $code === 403 && $phpError($body) === '', "status $code");
 }
 
+echo "\nBack to where you came from (Benjamin's rule, 24 Nov 2026)\n";
+// Laxmi Singh: My day › Contact changes to approve › Check › "Use the new details" landed on Candidates.
+$db->run('UPDATE candidates SET pending_contact = ?, updated_at = NOW() WHERE id = ?', [json_encode(['phone' => '+91 90000 00000', 'at' => date('Y-m-d H:i:s')]), $cMine]);
+$post = function (string $who, string $path, array $fields) use ($port, &$cookie): array {
+    $ch = curl_init("http://127.0.0.1:$port$path");
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => false, CURLOPT_TIMEOUT => 60, CURLOPT_COOKIE => $cookie[$who], CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => http_build_query($fields), CURLOPT_HEADER => true]);
+    $raw = (string) curl_exec($ch);
+    return [(int) curl_getinfo($ch, CURLINFO_HTTP_CODE), preg_match('/^Location: (.+)$/mi', $raw, $m) ? trim($m[1]) : ''];
+};
+$contentOf = fn (string $body) => substr($body, (int) strpos($body, 'id="content"'));
+$detailLinks = function (string $body) use ($contentOf): array {
+    preg_match_all('#<a\b[^>]*\bhref="(/[a-z-]+/\d+[^"]*)"#i', $contentOf($body), $m, PREG_SET_ORDER);
+    return array_values(array_filter(array_map(fn ($x) => html_entity_decode($x[1]), $m),
+        fn ($h) => !preg_match('#/(download|data|logo|file|cv)(/|$|\?)|/documents/\d+|\.(csv|pdf)#', $h)));
+};
+[$code, $day] = $get('owner', '/');
+$csrf = preg_match('/<meta name="csrf" content="([^"]+)"/', $day, $cm) ? $cm[1] : '';
+$check('My day lists the contact change to approve', str_contains($day, 'Smoke Mineonly gave a new email or mobile'));
+$links = $detailLinks($day);
+$noBack = array_filter($links, fn ($h) => !str_contains($h, 'back=%2F'));
+$check('every My day link into a page carries back=/ (' . count($links) . ' links)', $links && !$noBack, 'missing on: ' . implode(', ', array_slice($noBack, 0, 5)));
+$check('…the Check button too, naming its section: back=/#waiting-contact-changes-to-approve', in_array("/candidates/$cMine?back=%2F%23waiting-contact-changes-to-approve", $links, true), implode(', ', array_filter($links, fn ($h) => str_contains($h, "/candidates/$cMine?"))));
+foreach (["/candidates/$cMine?back=%2F" => 'My day', "/roles/$mine?back=%2F" => 'My day', "/shortlists/$short?back=%2Fcalendar" => 'Calendar', "/candidates/$cMine?back=%2Femails%3Ftab%3Dheld" => 'Emails'] as $path => $name) {
+    [$code, $body] = $get('owner', $path);
+    $back = Eshcol\Ats\Back::safe(urldecode((string) explode('back=', $path)[1]));
+    $forms = preg_match_all('#<form\b[^>]*method="post"[^>]*>#i', $contentOf($body));
+    $carried = preg_match_all('#<form\b[^>]*method="post"[^>]*><input type="hidden" name="_back" value="' . preg_quote(htmlspecialchars($back), '#') . '">#i', $contentOf($body));
+    $check("$path: Back button says \"Back to $name\" and goes there", $code === 200 && $phpError($body) === '' && str_contains($body, '<a class="back-btn" href="' . htmlspecialchars($back) . '">‹ Back to ' . $name . '</a>'), "status $code");
+    $check("…all $forms of its forms carry the origin", $forms > 0 && $carried === $forms, "$carried of $forms");
+}
+[$code, $loc] = $post('owner', "/candidates/$cMine/contact", ['_csrf' => $csrf, 'decision' => 'dismiss', '_back' => '/#waiting-contact-changes-to-approve', '_here' => "/candidates/$cMine?back=%2F%23waiting-contact-changes-to-approve"]);
+$check('"Keep the old ones" from My day: back to My day, at the Contact changes section', $code === 303 && $loc === '/#waiting-contact-changes-to-approve', "status $code, to $loc");
+[$code, $day2] = $get('owner', '/');
+$check('…that section is still there to land on once the item has gone (or the browser stays at the Waiting on you card)', !str_contains($day2, 'Smoke Mineonly gave a new email') && str_contains($day2, 'id="waiting"'));
+[$code, $loc] = $post('owner', "/candidates/$cMine/unreliable", ['_csrf' => $csrf, 'clear' => '1', '_back' => '/calendar?week=2026-11-23', '_here' => "/candidates/$cMine?back=x"]);
+$check('an action from a candidate opened from Calendar: back to the same Calendar week', $code === 303 && $loc === '/calendar?week=2026-11-23', "status $code, to $loc");
+[$code, $loc] = $post('owner', "/candidates/$cMine/unreliable", ['_csrf' => $csrf, 'clear' => '1', '_back' => '//evil.example/', '_here' => "/candidates/$cMine"]);
+$check('a back to another site is ignored', $code === 303 && $loc === "/candidates/$cMine", "status $code, to $loc");
+[$code, $loc] = $post('owner', "/candidates/$cMine/unreliable", ['_csrf' => $csrf, 'clear' => '1']);
+$check('opened with no origin: as before, back on their page', $code === 303 && $loc === "/candidates/$cMine", "status $code, to $loc");
+
 echo "\nSigned out\n";
 $cookie['nobody'] = 'x=y';
 [$code] = $get('nobody', "/roles/$mine");

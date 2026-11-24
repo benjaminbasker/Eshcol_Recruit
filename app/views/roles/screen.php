@@ -1,7 +1,7 @@
 <?php /** @var array $role @var array $rows @var bool $bcom @var string $scope */
 $byRule = ['not_qualified' => [], 'other_city' => []];
 foreach ($rows as $r) { $byRule[$r['rule']][] = $r; } ?>
-<div class="back-bar"><a class="back-btn" href="/roles/<?= (int) $role['id'] ?>#tab-pipeline">‹ Back to <?= e($role['title']) ?></a></div>
+<?= \Eshcol\Ats\Back::bar('/roles/' . (int) $role['id'] . '#tab-pipeline', 'Back to ' . $role['title']) ?>
 <div class="page-head">
   <div><p class="eyebrow"><?= e($role['code'] ?? '') ?></p><h1>Screening rules: <?= e($role['title']) ?></h1>
     <p class="muted">The rules on this position:

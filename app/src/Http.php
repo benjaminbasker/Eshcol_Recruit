@@ -146,6 +146,11 @@ final class Http
 
     public static function redirect(string $to): never
     {
+        // After an action on a page opened from somewhere else, go back there (Back, 24 Nov 2026).
+        if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['_back'])) {
+            $failed = (bool) array_filter($_SESSION['flash'] ?? [], fn ($f) => ($f[0] ?? '') === 'error');
+            $to = Back::afterPost($to, Back::safe($_POST['_back']), Back::safe($_POST['_here'] ?? null), $failed);
+        }
         header('Location: ' . $to, true, 303);
         exit;
     }

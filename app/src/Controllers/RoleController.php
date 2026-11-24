@@ -184,7 +184,7 @@ final class RoleController extends Controller
         // (517 KB of 886 on Associate, 1.1 MB of 1.7 on Manager). The page asks for it with ?part=claude.
         if (($_GET['part'] ?? '') === 'claude') {
             header('Cache-Control: no-store');
-            echo \Eshcol\Ats\View::render('roles/_fit', ['role' => $role, 'fit' => $fit, 'all' => array_merge($above, $below)], null);
+            echo \Eshcol\Ats\Back::filter(\Eshcol\Ats\View::render('roles/_fit', ['role' => $role, 'fit' => $fit, 'all' => array_merge($above, $below)], null), false, "/roles/$id#tab-claude");
             exit;
         }
         $this->view('roles/show', ['title' => $role['title'], 'role' => $role, 'criteria' => $criteria, 'stages' => $stages, 'fit' => $fit,

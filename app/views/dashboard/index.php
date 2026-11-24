@@ -9,7 +9,7 @@ $kindIcon = ['virtual' => 'video', 'in_person' => 'pin', 'phone' => 'phone'];
 ?>
 <?php // My day, redesigned 14 Nov 2026 (Benjamin's mix): C's aubergine band with A's number tiles, C's alert cards,
       // an Applications & responses panel, A's tabs and pipeline bar, B's Today timeline. ?>
-<section class="day-band">
+<section class="day-band" id="day">
   <div class="db-hello">
     <h1>Good <?= $hour < 12 ? 'morning' : ($hour < 17 ? 'afternoon' : 'evening') ?>, <?= $first ?></h1>
     <p><?= e(date('l, j F Y')) ?> · <?php
@@ -51,7 +51,7 @@ $restAlerts = array_slice($alerts, 3); ?>
 <?php endforeach; ?>
 
 <?php if (!empty($resp)): $periods = ['today' => 'Today', 'week' => 'Week to date', 'month' => 'Month to date']; ?>
-<section class="card resp-board">
+<section class="card resp-board" id="responses">
   <div class="card-head"><h2><?= icon('check') ?> Applications and responses</h2><a class="small" href="/details-requests">Responses <?= icon('chev-right', 'sm') ?></a></div>
   <div class="resp-grid">
     <?php foreach ($periods as $k => $label): $r = $resp[$k]; ?>
@@ -70,7 +70,7 @@ $restAlerts = array_slice($alerts, 3); ?>
 
 <div class="split">
   <div>
-    <section class="card">
+    <section class="card" id="waiting">
       <div class="card-head"><h2><?= icon('flag') ?> Waiting on you</h2><?php if ($todo): ?><span class="badge"><?= count($todo) ?></span><?php endif; ?></div>
       <?php if (!$todo): ?>
         <div class="empty" style="padding:22px 10px"><?= icon('check') ?><h3>You're all caught up</h3><p class="small">Client replies, interview outcomes and screening answers will show up here.</p></div>
@@ -88,7 +88,7 @@ $restAlerts = array_slice($alerts, 3); ?>
           <?php foreach ($groups as $gName => $items): ?><button type="button" data-todo-tab="<?= e($gName) ?>"><?= e($gName) ?> <?= count($items) ?></button><?php endforeach; ?>
         </div>
         <?php foreach ($groups as $gName => $items): ?>
-          <div data-todo-group="<?= e($gName) ?>">
+          <div data-todo-group="<?= e($gName) ?>" id="waiting-<?= e(trim((string) preg_replace('/[^a-z0-9]+/', '-', strtolower($gName)), '-')) ?>">
           <p class="todo-group"><?= e($gName) ?> <span class="badge"><?= count($items) ?></span></p>
           <ul class="attention">
             <?php foreach ($items as $t): ?>
@@ -109,14 +109,14 @@ $restAlerts = array_slice($alerts, 3); ?>
     foreach ($pipes as $p) { foreach ($p as $i => $c) { $tot[$i] = ($tot[$i] ?? 0) + (int) $c; } }
     $all = max(1, array_sum($tot)); ?>
     <?php if (array_sum($tot)): ?>
-    <section class="card">
+    <section class="card" id="pipeline">
       <div class="card-head"><h2><?= icon('list') ?> Pipeline</h2><span class="small muted"><?= ($view ?? 'all') === 'mine' ? 'your positions' : 'all open positions' ?></span></div>
       <div class="pipe-big"><?php foreach ($bands as $i => [$label, $color]): if (!empty($tot[$i])): ?><i style="width:<?= max(3, round($tot[$i] / $all * 100, 1)) ?>%;background:<?= $color ?>" title="<?= e($label) ?>: <?= (int) $tot[$i] ?>"></i><?php endif; endforeach; ?></div>
       <div class="pipe-legend"><?php foreach ($bands as $i => [$label, $color]): ?><span><i style="background:<?= $color ?>"></i><b><?= number_format((int) ($tot[$i] ?? 0)) ?></b><?= e($label) ?></span><?php endforeach; ?></div>
     </section>
     <?php endif; ?>
 
-    <section class="card" style="padding:0;overflow:hidden">
+    <section class="card" id="open-roles" style="padding:0;overflow:hidden">
       <div class="card-head" style="padding:16px 20px 0"><h2><?= icon('briefcase') ?> Open roles</h2><a class="small" href="/roles">All roles <?= icon('chev-right', 'sm') ?></a></div>
       <?php if (!$roles): ?>
         <div class="empty"><?= icon('briefcase') ?><h3>No open roles yet</h3><p><a class="btn" href="/roles/new"><?= icon('plus') ?>Create your first role</a></p></div>
@@ -152,7 +152,7 @@ $restAlerts = array_slice($alerts, 3); ?>
 
   <aside>
     <?php // B's Today: today's interviews by time, then the first few things waiting on you. ?>
-    <section class="card">
+    <section class="card" id="today">
       <div class="card-head"><h2><?= icon('clock') ?> Today</h2><span class="small muted"><?= e(date('D j M')) ?></span></div>
       <?php prime_stages(array_merge(array_column($schedule, 'candidate_id'), array_column($recent ?? [], 'id'))); // stage tags on every list (17 Nov 2026) ?>
       <?php $todayIv = array_values(array_filter($schedule, fn ($s) => substr($s['starts_at'], 0, 10) === $today)); ?>
@@ -167,7 +167,7 @@ $restAlerts = array_slice($alerts, 3); ?>
       </div>
     </section>
 
-    <section class="card">
+    <section class="card" id="interviews">
       <div class="card-head"><h2><?= icon('calendar') ?> Interviews</h2><a class="small" href="/calendar">Calendar ›</a></div>
       <?php if (!$schedule): ?>
         <p class="muted small" style="margin:0">No interviews booked. When a candidate picks a time, it appears here.</p>
@@ -187,7 +187,7 @@ $restAlerts = array_slice($alerts, 3); ?>
       <?php endif; ?>
     </section>
 
-    <section class="card">
+    <section class="card" id="recent">
       <div class="card-head"><h2><?= icon('users') ?> Recently added</h2><a class="small" href="/candidates?sort=new">See all</a></div>
       <?php if (!$recent): ?>
         <p class="muted small" style="margin:0">No candidates yet. <a href="/upload">Upload some CVs</a>.</p>

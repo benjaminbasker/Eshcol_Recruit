@@ -104,8 +104,14 @@ document.addEventListener('click', function (e) {
   var list = document.getElementById('cmdk-results');
   var items = [], active = 0, timer = null, seq = 0;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  // Opened from the quick search: that page's Back returns to the page you searched from (24 Nov 2026).
+  function withBack(u) {
+    if (!u || u.charAt(0) !== '/' || /[?&]back=/.test(u) || u.split(/[?#]/)[0] === location.pathname) { return u; }
+    var parts = u.split('#');
+    return parts[0] + (parts[0].indexOf('?') < 0 ? '?' : '&') + 'back=' + encodeURIComponent(location.pathname + location.search) + (parts.length > 1 ? '#' + parts[1] : '');
+  }
   function render(results) {
-    items = results || []; active = 0;
+    items = (results || []).map(function (r) { r.url = withBack(r.url); return r; }); active = 0;
     var html = '', group = null;
     items.forEach(function (r, i) {
       if (r.group !== group) { group = r.group; html += '<div class="cmdk-group">' + esc(group) + '</div>'; }
@@ -417,5 +423,46 @@ document.addEventListener('click', function (e) {
     tp.addEventListener('change', refresh);
     tp.addEventListener('input', refresh);
     refresh();
+  });
+})();
+
+// Back to where you were (Benjamin's rule, 24 Nov 2026): leaving a page by a link or a form remembers how far down
+// you were; coming back to that same page (its Back button, or after an action sends you back) puts you there again,
+// not at the top. The exact spot wins; when there is none (another tab, after 30 minutes), the #section in the address
+// (the part of the page the link was in) is the fallback, and the browser lands on that section. This tab only.
+(function () {
+  var KEY = 'ats-where';
+  function load() { try { return JSON.parse(sessionStorage.getItem(KEY) || '{}') || {}; } catch (e) { return {}; } }
+  function save(m) { try { sessionStorage.setItem(KEY, JSON.stringify(m)); } catch (e) { /* private mode: top of the page, as before */ } }
+  function here() { return location.pathname + location.search.replace(/([?&])back=[^&]*&?/, '$1').replace(/[?&]$/, ''); }
+  function remember() {
+    var m = load(), now = Date.now();
+    Object.keys(m).forEach(function (k) { if (now - m[k].t > 1800000) { delete m[k]; } });
+    m[here()] = { y: window.scrollY, t: now };
+    save(m);
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[href^="/"]');
+    if (a && !a.hasAttribute('download') && a.target !== '_blank') { remember(); }
+  }, true);
+  document.addEventListener('submit', remember, true);
+  window.addEventListener('load', function () {
+    var m = load(), k = here(), r = m[k];
+    if (!r || Date.now() - r.t > 1800000 || !r.y) {
+      // No saved spot: the #section. If it has gone (the last item in it was dealt with), the section around it:
+      // #waiting-contact-changes-to-approve → #waiting-contact-changes-to → … → #waiting (the Waiting on you card).
+      var id = decodeURIComponent((location.hash || '').slice(1));
+      if (id && !document.getElementById(id)) {
+        var parts = id.split('-');
+        while (parts.length > 1) {
+          parts.pop();
+          var el = document.getElementById(parts.join('-'));
+          if (el) { el.scrollIntoView(); break; }
+        }
+      }
+      return;
+    }
+    delete m[k]; save(m);
+    window.scrollTo(0, r.y);
   });
 })();

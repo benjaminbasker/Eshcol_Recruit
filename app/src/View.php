@@ -19,6 +19,9 @@ final class View
         if ($layout === null) {
             return $content;
         }
+        if ($layout === 'layout/app' && Back::applies()) {
+            $content = Back::filter($content); // "go back to where I came from" (24 Nov 2026)
+        }
         return self::render($layout, $data + ['content' => $content], null);
     }
 
