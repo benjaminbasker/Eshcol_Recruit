@@ -116,7 +116,7 @@ $cur = $query(); ?>
       <?php $kfAll = (new \Eshcol\Ats\Services\KeyFacts(\Eshcol\Ats\App::get()))->forCandidates(array_column($rows, 'id')); ?>
       <thead><tr><th style="width:34px"><input type="checkbox" data-all aria-label="Select all on this page"></th><th>Candidate</th><th>Positions <span class="hint">and stage</span></th><th>Current position</th><th>Experience today</th><th>Level</th><th>Location</th><th>Qualification</th><th>Notice</th><th>Salary <span class="hint">now → expects</span></th><th>Details</th><th>CV</th><th>Added</th></tr></thead>
       <tbody><?php foreach ($rows as $c): $sk = $c['skills'] ? explode('|', $c['skills']) : []; $m = exp_now($c); $kf = $kfAll[(int) $c['id']] ?? []; ?>
-        <tr>
+        <tr id="c-<?= (int) $c['id'] ?>">
           <td><?php if ($removalMode ? $isOwner : (!$c['do_not_contact'] && empty($c['unreliable_at']))): ?><input type="checkbox" name="ids[]" value="<?= (int) $c['id'] ?>" aria-label="Select <?= e($c['full_name'] ?: 'candidate') ?>"><?php endif; ?></td>
           <td><a href="/candidates/<?= $c['id'] ?>"><b><?= e($c['full_name'] ?: 'Name not found') ?></b></a> <span class="ref small"><?= ref_candidate($c['id']) ?></span>
             <?php if ($c['do_not_contact']): ?> <span class="badge cancelled">do not contact</span><?php endif; ?>

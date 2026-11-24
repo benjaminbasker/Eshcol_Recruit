@@ -26,7 +26,7 @@
   <div class="table-wrap"><table class="list">
     <thead><tr><th>Role</th><th>Client</th><th>Status</th><th>CVs</th><th>Above threshold</th><?= $status !== 'pools' ? '<th>Shortlisted</th>' : '' ?><th>Owner</th><th>Target</th></tr></thead>
     <tbody><?php foreach ($roles as $r): ?>
-      <tr>
+      <tr id="role-<?= (int) $r['id'] ?>">
         <td><a href="/roles/<?= $r['id'] ?>"><b><?= e($r['title']) ?></b></a><br><span class="small muted"><?= e($r['code']) ?><?= $r['location'] ? ' · ' . e($r['location']) : '' ?></span></td>
         <td><?= e(\Eshcol\Ats\Services\Engagement::clientLabel(['name' => $r['client'], 'is_self' => $r['is_self'] ?? 0])) ?><?= \Eshcol\Ats\Services\Engagement::of($r) === 'staffing' ? ' <span class="chip sand" style="text-decoration:none">staffing</span>' : '' ?></td>
         <td><span class="badge <?= e($r['status']) ?>"><?= e(str_replace('_', ' ', $r['status'])) ?></span></td>

@@ -240,6 +240,13 @@ $check('an action from a candidate opened from Calendar: back to the same Calend
 $check('a back to another site is ignored', $code === 303 && $loc === "/candidates/$cMine", "status $code, to $loc");
 [$code, $loc] = $post('owner', "/candidates/$cMine/unreliable", ['_csrf' => $csrf, 'clear' => '1']);
 $check('opened with no origin: as before, back on their page', $code === 303 && $loc === "/candidates/$cMine", "status $code, to $loc");
+// Live check after 1443: the lists carried back= but no row to come back to (24 Nov 2026).
+foreach (['/candidates' => "#/candidates/$cMine\?back=%2Fcandidates%23c-$cMine\b#", '/roles' => "#/roles/$mine\?back=%2Froles%23role-$mine\b#", '/clients' => '#/clients/\d+\?back=%2Fclients%23client-\d+#'] as $list => $want) {
+    [$code, $body] = $get('owner', $list);
+    $check("$list: a row's link brings him back to that row", $code === 200 && preg_match($want, $contentOf($body)) === 1, "status $code");
+}
+[$code, $body] = $get('owner', "/candidates/$cMine?back=%2Froles%2F999999%23tab-pipeline");
+$check('from a position where his row isn\'t found: Back still lands on the section he came from', str_contains($body, 'href="/roles/999999#tab-pipeline" data-back-role="999999"'));
 
 echo "\nSigned out\n";
 $cookie['nobody'] = 'x=y';

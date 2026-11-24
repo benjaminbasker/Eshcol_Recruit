@@ -28,7 +28,7 @@ $box = function (string $label, array $t) use ($rs) { ?>
   <div class="table-wrap"><table class="list compact">
     <thead><tr><th>Candidate</th><th>Position</th><th>Status</th><th>Joining</th><th>Fee</th><th>Invoice</th><th>Money</th><th>Guarantee until</th></tr></thead>
     <tbody><?php foreach ($rows as $r): ?>
-      <tr>
+      <tr id="p-<?= (int) $r['id'] ?>">
         <td><?= $r['candidate_id'] ? '<a href="/candidates/' . (int) $r['candidate_id'] . '#placement-' . (int) $r['id'] . '"><b>' . e((string) $r['name']) . '</b></a>' : '<b>' . e((string) ($r['name'] ?: 'Deleted candidate')) . '</b>' ?></td>
         <td class="small"><?= e((string) $r['role']) ?><br><span class="muted"><?= e((string) $r['client']) ?></span></td>
         <td class="small"><?= e(\Eshcol\Ats\Services\Placements::STATUS[$r['status']] ?? $r['status']) ?><?= $r['replacement_of'] ? '<br><span class="muted">replacement</span>' : '' ?></td>

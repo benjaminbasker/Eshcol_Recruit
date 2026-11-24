@@ -10,7 +10,7 @@
     <thead><tr><th>Candidate</th><th>Latest</th><th>When</th><th></th></tr></thead>
     <?php $msgKf = (new \Eshcol\Ats\Services\KeyFacts(\Eshcol\Ats\App::get()))->forCandidates(array_column($rows, 'candidate_id')); // the same key details on every list (16 Nov 2026) ?>
     <tbody><?php prime_stages(array_column($rows, 'candidate_id')); foreach ($rows as $r): ?>
-      <tr<?= $r['unread'] ? ' class="unread"' : '' ?>>
+      <tr id="m-<?= (int) $r['candidate_id'] ?>"<?= $r['unread'] ? ' class="unread"' : '' ?>>
         <td><a href="/candidates/<?= (int) $r['candidate_id'] ?>#messages"><b><?= e($r['full_name'] ?: 'Candidate') ?></b></a>
           <?php if ($r['unread']): ?><span class="chip yes"><?= (int) $r['unread'] ?> new</span><?php endif; ?>
           <?php if ($r['removal'] === 'asked'): ?><span class="chip flag">may want removal</span><?php endif; ?>

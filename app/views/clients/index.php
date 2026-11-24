@@ -10,7 +10,7 @@
       <thead><tr><th>Client</th><th>Main contact</th><th>Open roles</th><th>All roles</th><th>Fee</th></tr></thead>
       <tbody>
       <?php foreach ($clients as $c): ?>
-        <tr>
+        <tr id="client-<?= (int) $c['id'] ?>">
           <td style="display:flex;align-items:center;gap:10px"><?= client_logo($c, 'sm') ?><a href="/clients/<?= $c['id'] ?>"><b><?= e(\Eshcol\Ats\Services\Engagement::clientLabel($c)) ?></b></a><?= $c['is_active'] ? '' : ' <span class="badge cancelled">inactive</span>' ?></td>
           <td><?= e($c['contact'] ?: '–') ?></td>
           <td><?= (int) $c['roles_open'] ?></td>

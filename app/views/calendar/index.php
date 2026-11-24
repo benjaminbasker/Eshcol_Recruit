@@ -37,12 +37,12 @@ $today = date('Y-m-d'); ?>
 
 <div class="cal-week" style="--days:<?= count($days) ?>">
   <?php foreach ($days as $d): $items = $byDay[$d] ?? []; ?>
-    <section class="cal-day<?= $d === $today ? ' today' : '' ?><?= $d < $today ? ' past' : '' ?>" aria-label="<?= e(date('l j F', strtotime($d))) ?>">
+    <section id="day-<?= e($d) ?>" class="cal-day<?= $d === $today ? ' today' : '' ?><?= $d < $today ? ' past' : '' ?>" aria-label="<?= e(date('l j F', strtotime($d))) ?>">
       <h2><span><?= e(date('D', strtotime($d))) ?></span> <?= e(date('j M', strtotime($d))) ?></h2>
       <?php if (!$items): ?><p class="cal-none">Nothing</p><?php endif; ?>
       <?php foreach ($items as $it): $x = $it['x']; $t = strtotime($it['t']); $end = $t + 60 * (int) $x['duration_min']; ?>
         <?php if ($it['type'] === 'booked'): ?>
-          <div class="cal-item booked<?= $x['status'] === 'done' ? ' done' : '' ?>">
+          <div id="iv-<?= (int) ($x['id'] ?? 0) ?>" class="cal-item booked<?= $x['status'] === 'done' ? ' done' : '' ?>">
             <div class="cal-time"><?= e(date('g:i', $t)) ?>–<?= e(date('g:i A', $end)) ?></div>
             <a href="/candidates/<?= (int) $x['candidate_id'] ?>#interviews"><b><?= e($x['full_name']) ?></b></a>
             <div class="small"><?= e($x['title']) ?> · <?= e($x['client']) ?></div>

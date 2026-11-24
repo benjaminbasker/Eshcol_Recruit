@@ -19,7 +19,7 @@ use Eshcol\Ats\Services\Staffing;
   <div class="table-wrap"><table class="list">
     <thead><tr><th>Person</th><th>Job</th><th>Joining</th><th>Pay</th><th>Documents</th><th>Status</th><th></th></tr></thead>
     <tbody><?php prime_stages(array_column($rows, 'candidate_id')); foreach ($rows as $r): $p = $r['p']; $d = $p['deployment'] ?? null; ?>
-      <tr>
+      <tr id="j-<?= (int) $r['id'] ?>">
         <td><?php if ($r['candidate_id']): ?><a href="/candidates/<?= (int) $r['candidate_id'] ?>"><b><?= e($r['full_name']) ?></b></a> <?= stage_tags($r['candidate_id']) ?><?php else: ?><b><?= e($r['full_name']) ?></b><?php endif; ?>
           <br><span class="small muted"><?= e($p['source_ref']['candidate_ref'] ?? '') ?></span></td>
         <td><?= e($p['job']['designation'] ?? '') ?><br><span class="small muted"><?= $r['engagement'] === 'staffing' ? 'Staffing at ' . e($d['client_name'] ?? '') . ($d['client_site'] ?? '' ? ', ' . e(one_line((string) $d['client_site'])) : '') : 'Our own team' ?></span></td>

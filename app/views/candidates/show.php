@@ -42,6 +42,7 @@ $origin = \Eshcol\Ats\Back::safe($_GET['back'] ?? null);
 $backRole = (int) ($_GET['role'] ?? 0);
 if ($origin !== null && preg_match('#^/roles/(\d+)(?:[?\#].*)?$#', $origin, $om) && !str_contains($origin, 'back=')) {
     $backRole = (int) $om[1];
+    $backRoleFrag = str_contains($origin, '#') ? substr($origin, strpos($origin, '#')) : ''; // the section he came from, used when his row isn't found (24 Nov 2026)
     $origin = null;
 } elseif ($origin !== null) {
     $backRole = 0;
@@ -54,7 +55,7 @@ $waNumber = \Eshcol\Ats\Services\WhatsApp::number($c);
 $backTitle = $backRole ? (string) \Eshcol\Ats\App::get()->db->col('SELECT title FROM roles WHERE id = ?', [$backRole]) : '';
 // Back lands on their row in the list (17 Nov 2026), not the top of the position page: #app-{id} on the role page.
 $backApp = $backRole ? (int) (array_values(array_filter($apps, fn ($x) => (int) $x['role_id'] === $backRole))[0]['id'] ?? 0) : 0; ?>
-<div class="back-bar"><?= $origin !== null ? '<a class="back-btn" href="' . e($origin) . '">‹ Back to ' . e(\Eshcol\Ats\Back::label($origin)) . '</a>' : ($backRole ?'<a class="back-btn" href="/roles/' . $backRole . ($backApp ? '#app-' . $backApp : '') . '" data-back-role="' . $backRole . '"' . ($backApp ? ' data-back-app="' . $backApp . '"' : '') . '>‹ Back to ' . e($backTitle !== '' ? $backTitle : 'the role') . '</a>' : (\Eshcol\Ats\Access::restricted(\Eshcol\Ats\Auth::user()) ? '<a class="back-btn" href="/roles">‹ Your positions</a>' : '<a class="back-btn" href="/candidates">‹ Candidates</a>')) ?> <span class="ref"><?= ref_candidate($c['id']) ?></span> <span class="back-name"><?= e($nm) ?></span></div>
+<div class="back-bar"><?= $origin !== null ? '<a class="back-btn" href="' . e($origin) . '">‹ Back to ' . e(\Eshcol\Ats\Back::label($origin)) . '</a>' : ($backRole ?'<a class="back-btn" href="/roles/' . $backRole . ($backApp ? '#app-' . $backApp : e($backRoleFrag ?? '')) . '" data-back-role="' . $backRole . '"' . ($backApp ? ' data-back-app="' . $backApp . '"' : '') . '>‹ Back to ' . e($backTitle !== '' ? $backTitle : 'the role') . '</a>' : (\Eshcol\Ats\Access::restricted(\Eshcol\Ats\Auth::user()) ? '<a class="back-btn" href="/roles">‹ Your positions</a>' : '<a class="back-btn" href="/candidates">‹ Candidates</a>')) ?> <span class="ref"><?= ref_candidate($c['id']) ?></span> <span class="back-name"><?= e($nm) ?></span></div>
 <div class="card" style="padding:22px 24px">
   <div class="profile-hero">
     <span class="avatar xl" style="--h:<?= avatar_hue($nm) ?>"><?= e(initials($nm)) ?></span>
