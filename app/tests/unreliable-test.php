@@ -87,6 +87,14 @@ $check('the description reads well', str_starts_with(Reliability::describe($db->
 (new Reliability($app))->clear($cid2, $uid);
 $check('clearing the mark brings her back', in_array($cid2, $found(), true) && $db->col('SELECT unreliable_at FROM candidates WHERE id = ?', [$cid2]) === null);
 
+// 24 Nov 2026 (live error f0337112): "Stopped responding" with the note left empty gave "Something went wrong".
+// The page sends an empty note as nothing at all; marking must accept that.
+(new Reliability($app))->mark($cid2, 'no_response', null, $uid);
+$c5 = $db->one('SELECT * FROM candidates WHERE id = ?', [$cid2]);
+$check('marking with the note left empty works (24 Nov live error)', $c5['unreliable_reason'] === 'no_response' && $c5['unreliable_note'] === null && $c5['unreliable_at'] !== null);
+$check('…and reads "Stopped responding · date"', str_starts_with(Reliability::describe($c5), 'Stopped responding · '));
+(new Reliability($app))->clear($cid2, $uid);
+
 echo "\nThey apply again\n";
 $r3 = $person('Rahul Nikam', $role, $phone);
 $check('a new CV from them is saved, with a note that they are marked', (int) $r3['candidate_id'] === $cid && str_contains($r3['message'], 'unreliable'));

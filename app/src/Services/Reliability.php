@@ -27,11 +27,11 @@ final class Reliability
     {
     }
 
-    public function mark(int $candidateId, string $reason, string $note, ?int $userId): void
+    public function mark(int $candidateId, string $reason, ?string $note, ?int $userId): void
     {
         $reason = isset(self::REASONS[$reason]) ? $reason : 'other';
         $this->app->db->run('UPDATE candidates SET unreliable_at = NOW(), unreliable_reason = ?, unreliable_note = ?, unreliable_by = ? WHERE id = ?',
-            [$reason, mb_substr(trim($note), 0, 300) ?: null, $userId, $candidateId]);
+            [$reason, mb_substr(trim((string) $note), 0, 300) ?: null, $userId, $candidateId]);
         Audit::log('candidate_unreliable', 'candidate', $candidateId, ['reason' => $reason]);
     }
 
