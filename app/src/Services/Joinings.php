@@ -140,7 +140,7 @@ final class Joinings
      */
     public static function summaries(\Eshcol\Ats\App $app, string $where, int $limit, int $offset): array
     {
-        $rows = $app->db->all("SELECT id, application_id, candidate_id, full_name, engagement, joining_date, status, created_at, downloaded_at,
+        $rows = $app->db->all("SELECT id, application_id, candidate_id, full_name, engagement, joining_date, status, created_at, downloaded_at, imported_at, hrms_employee_no,
                 JSON_VALUE(payload, '$.source_ref.candidate_ref') AS ref, JSON_VALUE(payload, '$.job.designation') AS designation,
                 JSON_VALUE(payload, '$.job.contract_end') AS contract_end, JSON_VALUE(payload, '$.pay.gross_month') AS gross_month,
                 JSON_VALUE(payload, '$.pay.annual_ctc_lpa') AS annual_ctc_lpa, JSON_TYPE(JSON_EXTRACT(payload, '$.deployment')) = 'OBJECT' AS deployed,

@@ -23,7 +23,8 @@ final class JoiningController extends Controller
         $total = (int) $this->db->col("SELECT COUNT(*) FROM joinings WHERE $where");
         $rows = Joinings::summaries($this->app, $where, $per, ($page - 1) * $per);
         $this->view('joinings/index', ['title' => 'Joinings', 'rows' => $rows, 'show' => $show, 'page' => $page, 'pages' => max(1, (int) ceil($total / $per)),
-            'counts' => array_column($this->db->all('SELECT status, COUNT(*) n FROM joinings GROUP BY status'), 'n', 'status')]);
+            'counts' => array_column($this->db->all('SELECT status, COUNT(*) n FROM joinings GROUP BY status'), 'n', 'status'),
+            'hrmsLinked' => (new \Eshcol\Ats\Services\HrmsLink($this->app))->configured()]);
     }
 
     /** Everyone ready (or the ones ticked) as a spreadsheet; they are then marked "Downloaded". */
@@ -76,6 +77,27 @@ final class JoiningController extends Controller
             Http::flash('ok', $to === 'imported' ? $r['full_name'] . ' is marked as set up in the HRMS.' : 'Back to ready.');
         }
         Http::redirect('/joinings');
+    }
+
+    /** The link key made in the HRMS (typed in here by the owner, never sent anywhere), or remove it. */
+    public function hrmsLink(): never
+    {
+        Auth::requireOwner();
+        if (!empty($_POST['remove'])) {
+            \Eshcol\Ats\Secrets::forget($this->app, 'hrms_link_key');
+            Audit::log('hrms_link_removed', 'setting');
+            Http::flash('ok', 'The link to the HRMS is switched off.');
+            Http::redirect('/joinings#hrms-link');
+        }
+        $key = trim((string) ($_POST['key'] ?? ''));
+        if (!preg_match('/^[A-Za-z0-9_-]{40,64}$/', $key)) {
+            Http::flash('error', 'Paste the link key exactly as the HRMS showed it (Joinings from Recruit, Link to Recruit).');
+            Http::redirect('/joinings#hrms-link');
+        }
+        \Eshcol\Ats\Secrets::put($this->app, 'hrms_link_key', $key);
+        Audit::log('hrms_link_saved', 'setting');
+        Http::flash('ok', 'Saved. The HRMS can now fetch joining records; press Fetch from Recruit there to try it.');
+        Http::redirect('/joinings#hrms-link');
     }
 
     /** Refresh a record that isn't in the HRMS yet (e.g. a document came in after joining). */

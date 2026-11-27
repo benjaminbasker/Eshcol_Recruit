@@ -28,7 +28,8 @@ use Eshcol\Ats\Services\Staffing;
           <?= $d && isset($d['margin_pct']) ? '<br><span class="muted">margin ' . e((string) $d['margin_pct']) . ' %</span>' : '' ?></td>
         <td class="small"><?= (int) $r['doc_n'] ?> of <?= count(Staffing::JOINING) ?></td>
         <td><span class="chip <?= ['ready' => 'flag', 'downloaded' => 'sand', 'imported' => 'yes', 'withdrawn' => ''][$r['status']] ?>" style="text-decoration:none"><?= e(Joinings::STATUS[$r['status']]) ?></span>
-          <?= $r['downloaded_at'] ? '<br><span class="small muted">' . e(nice_date($r['downloaded_at'])) . '</span>' : '' ?></td>
+          <?= $r['status'] === 'imported' && !empty($r['hrms_employee_no']) ? '<br><span class="small muted">' . e($r['hrms_employee_no']) . ($r['imported_at'] ? ', ' . e(nice_date($r['imported_at'])) : '') . '</span>'
+            : ($r['downloaded_at'] ? '<br><span class="small muted">' . e(nice_date($r['downloaded_at'])) . '</span>' : '') ?></td>
         <td class="actions small">
           <a class="btn ghost small" href="/joinings/<?= (int) $r['id'] ?>/json">Full record</a>
           <?php if (in_array($r['status'], ['ready', 'downloaded'], true)): ?>
@@ -49,3 +50,12 @@ use Eshcol\Ats\Services\Staffing;
     </p>
   <?php endif; ?>
 <?php endif; ?>
+<section class="card" id="hrms-link" style="margin-top:18px">
+  <h2>Link to the HRMS</h2>
+  <p class="small">The HRMS fetches these records itself, every hour or when HR presses Fetch from Recruit, and tells Recruit when it has imported one: the record then shows "In the HRMS" with the employee number. Both apps hold the same link key: make it in the HRMS (Joinings from Recruit, Link to Recruit) and paste it here. Status: <b><?= !empty($hrmsLinked) ? 'linked' : 'not linked' ?></b>.</p>
+  <form method="post" action="/joinings/hrms-link" class="actions"><?= csrf() ?>
+    <input type="password" name="key" autocomplete="off" placeholder="Paste the link key from the HRMS" aria-label="Link key from the HRMS" style="max-width:420px">
+    <button class="btn" type="submit">Save</button>
+  </form>
+  <?php if (!empty($hrmsLinked)): ?><form method="post" action="/joinings/hrms-link" style="margin-top:8px"><?= csrf() ?><input type="hidden" name="remove" value="1"><button class="btn ghost small" type="submit">Switch the link off</button></form><?php endif; ?>
+</section>

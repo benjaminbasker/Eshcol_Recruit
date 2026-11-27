@@ -287,6 +287,10 @@ $router->get('/joinings/download.csv', [\Eshcol\Ats\Controllers\JoiningControlle
 $router->get('/joinings/{id}/json', [\Eshcol\Ats\Controllers\JoiningController::class, 'json']);
 $router->post('/joinings/{id}/status', [\Eshcol\Ats\Controllers\JoiningController::class, 'status']);
 $router->post('/joinings/{id}/refresh', [\Eshcol\Ats\Controllers\JoiningController::class, 'refresh']);
+$router->post('/joinings/hrms-link', [\Eshcol\Ats\Controllers\JoiningController::class, 'hrmsLink']);
+// The HRMS's signed server-to-server link (25 Nov 2026): it fetches joining records and reports what it imported.
+$router->get('/hooks/hrms/joinings', [\Eshcol\Ats\Controllers\HrmsApiController::class, 'joinings'], public: true);
+$router->post('/hooks/hrms/joinings/{id}/imported', [\Eshcol\Ats\Controllers\HrmsApiController::class, 'imported'], public: true);
 $router->post('/placements/{id}', [\Eshcol\Ats\Controllers\PlacementController::class, 'save']);
 $router->post('/placements/{id}/checkin/{day}', [\Eshcol\Ats\Controllers\PlacementController::class, 'checkin']);
 $router->post('/placements/{id}/left', [\Eshcol\Ats\Controllers\PlacementController::class, 'left']);
