@@ -62,6 +62,19 @@ final class Http
         if (PHP_SAPI === 'cli') {
             return;
         }
+        // Signing in re-issues the session cookie as a browser-session cookie (no expiry) a moment earlier in the same
+        // response. Two cookies of one name left it to the browser or the host's proxy to pick one, and a "kept for 7
+        // days" sign-in that loses that pick ends at the next restart (28 Nov 2026). Send only the 7-day one.
+        $keep = [];
+        foreach (headers_list() as $h) {
+            if (stripos($h, 'Set-Cookie:') === 0 && !preg_match('/^Set-Cookie:\s*' . preg_quote(session_name(), '/') . '=/i', $h)) {
+                $keep[] = $h;
+            }
+        }
+        header_remove('Set-Cookie');
+        foreach ($keep as $h) {
+            header($h, false);
+        }
         setcookie(session_name(), session_id(), [
             'expires' => (int) $_SESSION['login_at'] + self::TRUSTED_SESSION, 'path' => '/',
             'secure' => !$app->isLocal(), 'httponly' => true, 'samesite' => 'Lax',

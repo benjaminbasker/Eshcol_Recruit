@@ -289,6 +289,45 @@ final class RoleController extends Controller
             'scope' => FunctionRouting::scopeOf($role)]);
     }
 
+    /**
+     * The "same kind of work?" report for a position (27 Nov 2026): what Claude said after reading each whole CV against the
+     * whole job description, who it calls a different kind of work who is still being considered, who it calls the same
+     * kind whom the rules screened out, and how it agrees with your own decisions. POST moves the confident "no"s to
+     * Not suitable (never anyone Shortlisted or later; nobody is emailed). Owner only.
+     */
+    public function suitability(int $id): never
+    {
+        Auth::requireOwner();
+        $role = $this->role($id);
+        $svc = new \Eshcol\Ats\Services\SuitabilityCheck($this->app);
+        if (Http::method() === 'POST') {
+            $moved = $svc->applyNo($id, (int) Auth::user()['id']);
+            Http::flash('ok', $moved ? count($moved) . ' moved to Not suitable, each with Claude\'s reason. Nobody was emailed; you can move anyone back.' : 'Nobody to move.');
+            Http::redirect("/roles/$id#tab-pipeline");
+        }
+        $this->view('roles/suitability', ['title' => 'Kind of work: ' . $role['title'], 'role' => $role, 'rep' => $svc->report($id), 'svc' => $svc,
+            'mode' => \Eshcol\Ats\Services\SuitabilityCheck::mode($this->app), 'counts' => $svc->counts()]);
+    }
+
+    /** The mode, the reader and the monthly limit of the kind-of-work check. Owner only. */
+    public function suitabilitySettings(): never
+    {
+        Auth::requireOwner();
+        $mode = isset(\Eshcol\Ats\Services\SuitabilityCheck::MODES[$_POST['mode'] ?? '']) ? $_POST['mode'] : 'trial';
+        $reader = isset(\Eshcol\Ats\Services\CvReader::MODELS[$_POST['reader'] ?? '']) ? $_POST['reader'] : 'haiku';
+        $limit = max(100, min(20000, (int) ($_POST['limit'] ?? 3000)));
+        foreach (['suitability_mode' => $mode, 'suitability_reader' => $reader, 'suitability_monthly_limit' => (string) $limit] as $k => $v) {
+            $this->db->run('INSERT INTO settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)', [$k, $v]);
+        }
+        if ($mode !== 'off') {
+            (new \Eshcol\Ats\Services\SuitabilityCheck($this->app))->queueMissing();
+        }
+        Audit::log('suitability_settings_saved', null, null, ['mode' => $mode, 'reader' => $reader, 'limit' => $limit]);
+        Http::flash('ok', 'Saved: ' . \Eshcol\Ats\Services\SuitabilityCheck::MODES[$mode] . '.');
+        $back = (string) ($_POST['back'] ?? '');
+        Http::redirect(preg_match('#^/roles/\d+/suitability$#', $back) ? $back : '/roles');
+    }
+
     public function found(int $id): never
     {
         $role = $this->role($id);

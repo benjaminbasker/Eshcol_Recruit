@@ -22,7 +22,7 @@ final class Access
     public const KINDS = [
         'ClientController::show' => 'none', 'ClientController::edit' => 'none', 'ClientController::logo' => 'none', 'ClientController::update' => 'none',
         'ClientController::addContact' => 'none', 'ClientController::portalAccess' => 'none',
-        'RoleController::show' => 'role', 'RoleController::screen' => 'role', 'RoleController::edit' => 'role', 'RoleController::update' => 'role', 'RoleController::rescore' => 'role',
+        'RoleController::show' => 'role', 'RoleController::screen' => 'role', 'RoleController::suitability' => 'role', 'RoleController::suitabilitySettings' => 'none', 'McpApiController::page' => 'none', 'McpApiController::save' => 'none', 'RoleController::edit' => 'role', 'RoleController::update' => 'role', 'RoleController::rescore' => 'role',
         'RoleController::matches' => 'role', 'RoleController::addCandidate' => 'role', 'RoleController::found' => 'role',
         'PostingController::show' => 'role',
         'FitController::save' => 'role', 'FitController::copy' => 'role', 'FitController::suggest' => 'role', 'FitController::queue' => 'role',
@@ -65,7 +65,7 @@ final class Access
         'ReaderTestController::review' => 'none', 'ReaderTestController::saveTruth' => 'none',
         'HealthController::clearEmail' => 'candidate', 'HealthController::exportData' => 'candidate',
         'SettingsController::userPositions' => 'none', 'SettingsController::userActive' => 'none',
-        'JoiningController::json' => 'none', 'JoiningController::status' => 'none', 'JoiningController::refresh' => 'none',
+        'JoiningController::json' => 'none', 'JoiningController::status' => 'none', 'JoiningController::refresh' => 'none', 'JoiningController::leaverHandled' => 'none',
         'PlacementController::save' => 'none', 'PlacementController::checkin' => 'none', 'PlacementController::left' => 'none',
     ];
 

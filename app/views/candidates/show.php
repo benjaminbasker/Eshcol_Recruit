@@ -63,7 +63,8 @@ $backApp = $backRole ? (int) (array_values(array_filter($apps, fn ($x) => (int) 
       <h1><?= e($nm) ?><?= $srcLabel('full_name') ?>
         <?php if ($c['do_not_contact']): ?> <span class="badge cancelled" style="vertical-align:middle">do not contact</span><?php endif; ?>
         <?php if (!empty($c['unreliable_at'])): ?> <span class="badge cancelled" style="vertical-align:middle">unreliable</span><?php endif; ?>
-        <?php if (!empty($c['red_listed_at'])): ?> <span class="badge cancelled" style="vertical-align:middle">red-listed</span><?php endif; ?></h1>
+        <?php if (!empty($c['red_listed_at'])): ?> <span class="badge cancelled" style="vertical-align:middle">red-listed</span><?php endif; ?>
+        <?php if (!empty($hrmsExit)): ?> <span class="badge<?= $hrmsExit['rehire_ok'] !== null && !(int) $hrmsExit['rehire_ok'] ? ' cancelled' : '' ?>" style="vertical-align:middle" title="<?= e(($hrmsExit['designation'] ?? '') . ($hrmsExit['client'] ? ' at ' . $hrmsExit['client'] : '') . ', ' . ($hrmsExit['reason'] ?? '') . ($hrmsExit['rehire_ok'] === null ? '' : ((int) $hrmsExit['rehire_ok'] ? '; would rehire' : '; do not rehire'))) ?>"><?= $hrmsExit['has_left'] ? 'worked at Eshcol to ' . e(date('M Y', strtotime($hrmsExit['last_day']))) : 'leaving Eshcol ' . e(date('j M', strtotime($hrmsExit['last_day']))) ?><?= $hrmsExit['rehire_ok'] !== null && !(int) $hrmsExit['rehire_ok'] ? ', do not rehire' : '' ?></span><?php endif; ?></h1>
       <?php // Where they stand on every open position, at the top of their page (20 Nov 2026: Soham's showed nowhere up here).
         $hdrStages = stage_tags($c['id']);
         if ($hdrStages !== ''): ?><p class="small" style="margin:6px 0 0"><?= $hdrStages ?></p><?php endif; ?>

@@ -21,6 +21,15 @@ final class StaffingController extends Controller
         $this->view('settings/staffing', ['title' => 'Staffing', 'rates' => $st->rates(), 'headcount' => $st->headcount(), 'about' => $st->aboutToJoin(), 'licence' => $st->licence(),
             'licenceNo' => (string) $this->app->setting('labour_licence_no', ''), 'licenceTo' => (string) $this->app->setting('labour_licence_valid_to', ''),
             'minMargin' => $st->minMarginPct(),
+            'hrms' => (function () use ($st) {
+                $L = new \Eshcol\Ats\Services\HrmsLink($this->app);
+                $out = [];
+                foreach (array_keys($st->rates()) as $k) {
+                    $out[$k] = $L->hrmsValue($k);
+                }
+                return $out;
+            })(),
+            'feedsAt' => (string) $this->app->setting('hrms_feeds_at', ''),
             'das' => $this->db->all('SELECT d.*, u.name AS confirmer FROM min_wage_da d LEFT JOIN users u ON u.id = d.confirmed_by ORDER BY d.work_kind, d.effective_from DESC'),
             // In the order of the classes list (unskilled first), then zone.
             'wages' => $this->db->all("SELECT w.*, u.name AS confirmer FROM min_wages w LEFT JOIN users u ON u.id = w.confirmed_by
@@ -58,6 +67,26 @@ final class StaffingController extends Controller
             $this->db->run("INSERT INTO settings (k, v) VALUES ('staffing_min_margin_pct', ?) ON DUPLICATE KEY UPDATE v = VALUES(v)", [(string) (float) $m]);
         }
         Http::flash('ok', 'Saved' . ($n ? ", $n rate" . ($n > 1 ? 's' : '') . ' confirmed.' : '.') . ' A rate you change needs confirming again.');
+        Http::redirect('/settings/staffing#rates');
+    }
+
+    /** Take the HRMS's figure for the ticked rates. Each then needs confirming again, as any changed rate does. */
+    public function useHrms(): never
+    {
+        Auth::requireOwner();
+        $L = new \Eshcol\Ats\Services\HrmsLink($this->app);
+        $n = 0;
+        foreach ((array) ($_POST['take'] ?? []) as $k) {
+            $k = (string) $k;
+            $h = isset(\Eshcol\Ats\Services\HrmsLink::RATE_MAP[$k]) ? $L->hrmsValue($k) : null;
+            if (!$h) {
+                continue;
+            }
+            $this->db->run('UPDATE statutory_rates SET value = ?, confirmed_by = NULL, confirmed_at = NULL WHERE k = ?', [$h['value'], $k]);
+            Audit::log('statutory_rate_from_hrms', 'setting', null, ['k' => $k, 'value' => $h['value']]);
+            $n++;
+        }
+        Http::flash($n ? 'ok' : 'error', $n ? "$n rate" . ($n > 1 ? 's' : '') . ' taken from the HRMS. Confirm each one below.' : 'Tick the rates to take from the HRMS.');
         Http::redirect('/settings/staffing#rates');
     }
 

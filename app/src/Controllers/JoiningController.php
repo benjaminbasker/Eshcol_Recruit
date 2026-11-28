@@ -24,7 +24,10 @@ final class JoiningController extends Controller
         $rows = Joinings::summaries($this->app, $where, $per, ($page - 1) * $per);
         $this->view('joinings/index', ['title' => 'Joinings', 'rows' => $rows, 'show' => $show, 'page' => $page, 'pages' => max(1, (int) ceil($total / $per)),
             'counts' => array_column($this->db->all('SELECT status, COUNT(*) n FROM joinings GROUP BY status'), 'n', 'status'),
-            'hrmsLinked' => (new \Eshcol\Ats\Services\HrmsLink($this->app))->configured()]);
+            'hrmsLinked' => (new \Eshcol\Ats\Services\HrmsLink($this->app))->configured(),
+            'feedsAt' => (string) $this->app->setting('hrms_feeds_at', ''),
+            'leavers' => $this->db->all('SELECT x.*, c.full_name, cl.name AS client FROM hrms_exits x LEFT JOIN candidates c ON c.id = x.candidate_id LEFT JOIN clients cl ON cl.id = x.client_id
+                WHERE x.handled_at IS NULL OR x.handled_at >= NOW() - INTERVAL 30 DAY ORDER BY x.handled_at IS NOT NULL, x.last_day')]);
     }
 
     /** Everyone ready (or the ones ticked) as a spreadsheet; they are then marked "Downloaded". */
@@ -98,6 +101,27 @@ final class JoiningController extends Controller
         Audit::log('hrms_link_saved', 'setting');
         Http::flash('ok', 'Saved. The HRMS can now fetch joining records; press Fetch from Recruit there to try it.');
         Http::redirect('/joinings#hrms-link');
+    }
+
+
+    /** Fetch the HRMS's rates and leavers now (it also happens every morning). */
+    public function fetchHrms(): never
+    {
+        Auth::requireOwner();
+        $out = (new \Eshcol\Ats\Services\HrmsLink($this->app))->fetchFeeds();
+        Http::flash(str_contains($out, 'could not') || str_contains($out, 'answered') || str_contains($out, 'said') || $out === 'not linked' ? 'error' : 'ok', 'From the HRMS: ' . $out . '.');
+        Http::redirect('/joinings#leavers');
+    }
+
+    /** A leaver is dealt with: a replacement raised, or nothing needed. */
+    public function leaverHandled(int $id): never
+    {
+        Auth::requireOwner();
+        $this->findOr404('hrms_exits', $id);
+        $this->db->run('UPDATE hrms_exits SET handled_at = NOW(), handled_note = ? WHERE id = ?', [mb_substr(trim((string) ($_POST['note'] ?? '')), 0, 255) ?: null, $id]);
+        Audit::log('hrms_leaver_handled', 'setting', null, ['leaver' => $id]);
+        Http::flash('ok', 'Marked as dealt with.');
+        Http::redirect('/joinings#leavers');
     }
 
     /** Refresh a record that isn't in the HRMS yet (e.g. a document came in after joining). */

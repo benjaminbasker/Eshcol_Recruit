@@ -13,13 +13,17 @@ $open = count(array_filter($rates, fn ($r) => $r['confirmed_at'] === null));
   <p class="small">These are suggested figures. Check each against the current rules, correct it if needed, and tick <b>Confirm</b>. Your name and the date are kept. A staffing offer can't be approved while any rate is unconfirmed, and a rate you change needs confirming again.</p>
   <form method="post" action="/settings/staffing/rates"><?= csrf() ?>
     <div class="table-wrap"><table class="list compact">
-      <thead><tr><th>Rate</th><th style="width:150px">Value</th><th>Confirmed</th></tr></thead>
+      <thead><tr><th>Rate</th><th style="width:150px">Value</th><th>Confirmed</th><th>The HRMS</th></tr></thead>
       <tbody><?php foreach ($rates as $k => $r): ?>
         <tr>
           <td><b><?= e($r['label']) ?></b><?= $r['note'] ? '<br><span class="small muted">' . e($r['note']) . '</span>' : '' ?></td>
           <td><label class="visually-hidden" for="v-<?= e($k) ?>"><?= e($r['label']) ?></label><input type="text" inputmode="decimal" id="v-<?= e($k) ?>" name="v[<?= e($k) ?>]" value="<?= e(rtrim(rtrim((string) $r['value'], '0'), '.')) ?>" style="width:90px"> <span class="small muted"><?= e($unit[$r['unit']] ?? '') ?></span></td>
           <td class="small"><?php if ($r['confirmed_at']): ?><span class="chip yes" style="text-decoration:none">✓ <?= e($r['confirmer'] ?? '') ?>, <?= e(nice_date($r['confirmed_at'])) ?></span>
             <?php else: ?><label><input type="checkbox" name="confirm[]" value="<?= e($k) ?>"> Confirm</label><?php endif; ?></td>
+          <td class="small"><?php $h = $hrms[$k] ?? null; if ($h): $same = abs($h['value'] - (float) $r['value']) < 0.0001; ?>
+            <?= e(rtrim(rtrim(number_format($h['value'], 4, '.', ''), '0'), '.')) ?><?= $h['confirmed'] ? '' : ' <span class="muted">(not confirmed there)</span>' ?>
+            <?= $same ? ' <span class="chip yes" style="text-decoration:none">Same</span>' : ' <label><input type="checkbox" name="take[]" value="' . e($k) . '" form="take-hrms"> Take it</label>' ?>
+          <?php else: ?><span class="muted">Recruit's own</span><?php endif; ?></td>
         </tr>
       <?php endforeach; ?></tbody>
     </table></div>
@@ -28,6 +32,9 @@ $open = count(array_filter($rates, fn ($r) => $r['confirmed_at'] === null));
       <div class="field"><button class="btn" type="submit">Save</button></div>
     </div>
   </form>
+  <form method="post" action="/settings/staffing/rates/hrms" id="take-hrms" class="actions" style="margin-top:8px"><?= csrf() ?>
+    <button class="btn ghost small" type="submit">Take the ticked figures from the HRMS</button>
+    <span class="small muted">The HRMS owns the statutory rates. <?= !empty($feedsAt) ? 'Last fetched: ' . e($feedsAt) . '.' : 'Not fetched yet: link the HRMS on Joinings.' ?> A rate you take needs confirming again.</span></form>
 </section>
 
 <section class="card" id="wages">

@@ -59,3 +59,20 @@ use Eshcol\Ats\Services\Staffing;
   </form>
   <?php if (!empty($hrmsLinked)): ?><form method="post" action="/joinings/hrms-link" style="margin-top:8px"><?= csrf() ?><input type="hidden" name="remove" value="1"><button class="btn ghost small" type="submit">Switch the link off</button></form><?php endif; ?>
 </section>
+<section class="card" id="leavers" style="margin-top:18px">
+  <h2>Leaving or left (from the HRMS)</h2>
+  <p class="small">People Recruit placed who have resigned, finished their contract or left, as the HRMS records them. Raise a replacement with the client if one is needed, then mark it dealt with. <?= !empty($feedsAt) ? 'Last fetched: ' . e($feedsAt) . '.' : 'Not fetched yet.' ?></p>
+  <?php if (empty($leavers)): ?><p class="small muted">Nobody leaving.</p><?php else: ?>
+  <div class="table-wrap"><table class="list compact">
+    <thead><tr><th>Person</th><th>Client</th><th>Last day</th><th>Why</th><th>Rehire</th><th></th></tr></thead>
+    <tbody><?php foreach ($leavers as $l): ?>
+      <tr><td><?= $l['candidate_id'] ? '<a href="/candidates/' . (int) $l['candidate_id'] . '">' . e($l['full_name'] ?? ref_candidate((int) $l['candidate_id'])) . '</a>' : e($l['emp_no']) ?><br><span class="small muted"><?= e((string) $l['designation']) ?>, <?= e($l['emp_no']) ?></span></td>
+        <td class="small"><?= e((string) ($l['client'] ?? '')) ?></td><td><?= e(nice_date($l['last_day'])) ?><?= $l['has_left'] ? '' : ' <span class="chip flag" style="text-decoration:none">On notice</span>' ?></td>
+        <td class="small"><?= e((string) $l['reason']) ?></td><td class="small"><?= $l['rehire_ok'] === null ? '' : ((int) $l['rehire_ok'] ? 'Yes' : 'No') ?></td>
+        <td><?php if ($l['handled_at']): ?><span class="small muted">Dealt with<?= $l['handled_note'] ? ': ' . e($l['handled_note']) : '' ?></span>
+          <?php else: ?><form method="post" action="/joinings/leavers/<?= (int) $l['id'] ?>/handled" class="actions"><?= csrf() ?><input type="text" name="note" maxlength="255" placeholder="e.g. Replacement raised on 270" aria-label="Note" style="max-width:200px"><button class="btn ghost small" type="submit">Dealt with</button></form><?php endif; ?></td></tr>
+    <?php endforeach; ?></tbody>
+  </table></div>
+  <?php endif; ?>
+  <?php if (!empty($hrmsLinked)): ?><form method="post" action="/joinings/hrms-fetch" style="margin-top:8px"><?= csrf() ?><button class="btn ghost small" type="submit">Fetch from the HRMS now</button></form><?php endif; ?>
+</section>

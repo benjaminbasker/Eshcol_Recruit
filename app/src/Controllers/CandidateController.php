@@ -256,6 +256,7 @@ final class CandidateController extends Controller
     {
         $c = $this->findOr404('candidates', $id);
         Audit::log('candidate_viewed', 'candidate', $id);
+        $hrmsExit = $this->db->one('SELECT x.*, cl.name AS client FROM hrms_exits x LEFT JOIN clients cl ON cl.id = x.client_id WHERE x.candidate_id = ? ORDER BY x.last_day DESC LIMIT 1', [$id]);
         $files = $this->db->all('SELECT id, original_name, ext, size_bytes, text, text_status, text_source, created_at FROM cv_files WHERE candidate_id = ? ORDER BY id DESC', [$id]);
         $apps = $this->db->all('
             SELECT a.*, COALESCE(a.override_score, a.score) AS eff_score, r.title, r.code, r.engagement, r.is_pool, r.score_threshold, cl.name AS client, s.name AS stage, s.kind AS stage_kind, r.ctc_max_lpa AS role_ctc_max, r.notice_max_days AS role_notice_max, r.location AS role_location, r.work_mode AS role_work_mode, r.status AS role_status,
@@ -269,7 +270,7 @@ final class CandidateController extends Controller
         $openRoles = $this->db->all("SELECT r.id, r.title, cl.name AS client FROM roles r JOIN clients cl ON cl.id = r.client_id WHERE r.status = 'open' AND r.is_pool = 0 AND r.id NOT IN (SELECT role_id FROM applications WHERE candidate_id = ?) AND " . \Eshcol\Ats\Access::roleFilter(Auth::user(), 'r.id')
             . (\Eshcol\Ats\Services\ClientRejections::ready($this->app) ? " AND NOT EXISTS (SELECT 1 FROM client_rejections cr WHERE cr.candidate_id = " . (int) $id . " AND cr.client_id = r.client_id)" : '')
             . " ORDER BY r.title", [$id]); // not a client who turned them down (20 Nov 2026)
-        $this->view('candidates/show', ['title' => $c['full_name'] ?: 'Candidate', 'c' => $c, 'files' => $files, 'apps' => $apps,
+        $this->view('candidates/show', ['title' => $c['full_name'] ?: 'Candidate', 'c' => $c, 'files' => $files, 'apps' => $apps, 'hrmsExit' => $hrmsExit,
             'clientRejections' => (new \Eshcol\Ats\Services\ClientRejections($this->app))->forCandidate($id),
             'skills' => array_column($skills, 'skill'), 'titles' => $titles, 'notes' => $notes, 'stages' => $stages,
             'screening' => $this->screening($id),

@@ -200,6 +200,12 @@ final class FitAssessor
      */
     public function relevance(int $applicationId, ?string $rules = null): array
     {
+        // Mode "on" (27 Nov 2026): Claude read the whole CV against the whole job description and said it is a different
+        // kind of work: not assessed, whatever the keywords say. In trial mode (or off) this changes nothing.
+        [$out, $outWhy] = SuitabilityCheck::leaveOut($this->app, $applicationId);
+        if ($out) {
+            return [false, $outWhy];
+        }
         $rules ??= Categoriser::mode($this->app) === 'on' ? 'field' : 'keywords';
         $db = $this->app->db;
         $a = $db->one('SELECT a.*, r.is_pool, r.status AS role_status FROM applications a JOIN roles r ON r.id = a.role_id WHERE a.id = ?', [$applicationId]);
@@ -283,7 +289,7 @@ final class FitAssessor
         }
         $musts = implode('|', array_column($db->all("SELECT value FROM role_criteria WHERE role_id = ? ORDER BY id", [$roleId]), 'value'));
         $dict = $db->one('SELECT COUNT(*) n, MAX(id) m FROM skills_dictionary');
-        $roleKey = implode('#', [$role['updated_at'], $this->roleVersion($role), $musts, Categoriser::mode($this->app), $dict['n'] ?? 0, $dict['m'] ?? 0]);
+        $roleKey = implode('#', [$role['updated_at'], $this->roleVersion($role), $musts, Categoriser::mode($this->app), $dict['n'] ?? 0, $dict['m'] ?? 0, SuitabilityCheck::mode($this->app)]);
         $in = implode(',', $appIds);
         $rows = $db->all("SELECT a.id, a.stage_id, c.updated_at, c.do_not_contact, c.removal_requested_at, c.unreliable_at, c.exp_months, c.exp_as_of, c.location, c.locality,
                 (SELECT MAX(f.id) FROM cv_files f WHERE f.candidate_id = c.id) AS cv,
@@ -296,7 +302,7 @@ final class FitAssessor
         foreach ($rows as $r) {
             // The fields the check reads are in the fingerprint themselves too: two edits in the same second leave updated_at unchanged.
             $fp = md5($roleKey . '#' . implode('#', [$r['id'], $r['updated_at'], $r['cv'], $r['cat'], $r['do_not_contact'], $r['removal_requested_at'],
-                $r['unreliable_at'], $r['exp_months'], $r['exp_as_of'], $r['location'], $r['locality']]));
+                $r['unreliable_at'], $r['exp_months'], $r['exp_as_of'], $r['location'], $r['locality'], (SuitabilityCheck::leaveOut($this->app, (int) $r['id']))[0] ? 'out' : 'in']));
             if ($r['fingerprint'] === $fp && $r['checked_at'] >= $dayAgo) {
                 $out[(int) $r['id']] = [(bool) $r['relevant'], (string) $r['why']];
                 continue;

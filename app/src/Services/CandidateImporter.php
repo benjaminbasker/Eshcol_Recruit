@@ -285,6 +285,12 @@ final class CandidateImporter
         ]);
         $db->insert('stage_history', ['application_id' => $appId, 'to_stage_id' => $first, 'user_id' => $userId, 'note' => 'Added']);
         $this->scoreApplication($appId);
+        // Is it the same kind of work as the position? Claude reads the whole CV against the whole job description
+        // (27 Nov 2026). Queued only; the five-minute job asks. Never stops an upload (before update 080 there is no table).
+        try {
+            (new SuitabilityCheck($this->app))->queue($appId);
+        } catch (\Throwable) {
+        }
         // Picked from the database onto a position they don't actually qualify for (B.Com, or local
         // candidates only): screened out straight away, same as a self-application (Benjamin, 18 Nov 2026).
         // No need to review the CV for this, and no Claude assessment is spent on it.

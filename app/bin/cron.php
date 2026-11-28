@@ -89,6 +89,10 @@ $tasks = [
         $left = (int) (200 - (microtime(true) - $tickStart));
         return (new \Eshcol\Ats\Services\Categoriser($app))->runBatch($readingIdle ? 80 : 40, max(15, min($readingIdle ? 150 : 60, $left)));
     }],
+    // Is each application the same kind of work as its position? (Claude Haiku, the whole CV against the whole job description; 27 Nov 2026)
+    'suitability' => [fn () => \Eshcol\Ats\Services\SuitabilityCheck::mode($app) !== 'off' && !(new \Eshcol\Ats\Services\Migrator($app))->pending(), function () use ($app) {
+        return (new \Eshcol\Ats\Services\SuitabilityCheck($app))->runBatch(40, 60);
+    }],
     // Then Claude assesses the candidates the free check found relevant to their roles:
     // in half-price batches (results within the hour, usually), or one by one when batches are off.
     'fit' => [fn () => \Eshcol\Ats\Services\FitAssessor::enabled($app) && !(new \Eshcol\Ats\Services\Migrator($app))->pending(), function () use ($app) {
@@ -207,6 +211,10 @@ $tasks = [
     'db_sweep' => [fn () => $dueDaily('db_sweep', \Eshcol\Ats\Services\DatabaseSweep::HOUR) && !(new \Eshcol\Ats\Services\Migrator($app))->pending(), function () use ($app) {
         $uid = (int) $app->db->col("SELECT id FROM users WHERE role = 'owner' AND is_active = 1 ORDER BY id LIMIT 1");
         return $uid ? (new \Eshcol\Ats\Services\DatabaseSweep($app))->runDaily($uid) : 'no owner to add them as';
+    }],
+    // Reading back from the HRMS (28 Nov 2026): its statutory rates and the people leaving, once each morning.
+    'hrms_feeds' => [fn () => $dueDaily('hrms_feeds', 6) && !(new \Eshcol\Ats\Services\Migrator($app))->pending(), function () use ($app) {
+        return (new \Eshcol\Ats\Services\HrmsLink($app))->fetchFeeds();
     }],
     'audit_trim' => [fn () => $dueDaily('audit_trim', 4), function () use ($app) {
         // The activity log is kept for two years (India's rules ask for at least one).

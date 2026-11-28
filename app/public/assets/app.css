@@ -293,8 +293,25 @@ tr.short > td:first-child { box-shadow: inset 5px 0 0 var(--green); }
 .out-needs_ocr { color: var(--warn); } .out-failed, .out-skipped { color: var(--red); }
 
 /* ── Sign-in pages ────────────────────────────────────────────────────── */
-.auth { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(1200px 600px at 10% -10%, #4B1B8A 0%, transparent 60%), linear-gradient(160deg, #2C0A57, #160430); }
-.auth .box { width: 100%; max-width: 420px; background: var(--white); border-radius: 16px; padding: 32px; box-shadow: var(--sh-3); }
+/* Sign-in pages, soft "neumorphic" look (28 Nov 2026): one lilac ground, a raised card, sunken fields, a raised button.
+   Text stays dark aubergine for contrast, and focus is a clear outline, not just a shadow. */
+.auth { --nm-bg: #EEE7F6; --nm-dark: #CFC4E0; --nm-light: #FFFFFF; --nm-ink: #2C0A57; --nm-accent: #4B1B8A;
+  min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--nm-bg); color: var(--nm-ink); }
+.auth .box { width: 100%; max-width: 420px; background: var(--nm-bg); border-radius: 24px; padding: 36px 32px; box-shadow: 14px 14px 28px var(--nm-dark), -14px -14px 28px var(--nm-light); }
+.auth .box label { color: var(--nm-ink); font-weight: 600; }
+.auth .box input[type=email], .auth .box input[type=password], .auth .box input[type=text], .auth .box input[type=number], .auth .box input[type=tel], .auth .box input:not([type]) {
+  width: 100%; background: var(--nm-bg); color: var(--nm-ink); border: 0; border-radius: 16px; padding: 14px 18px;
+  box-shadow: inset 6px 6px 12px var(--nm-dark), inset -6px -6px 12px var(--nm-light); }
+.auth .box input:focus-visible { outline: 3px solid var(--nm-accent); outline-offset: 3px; }
+.auth .box .btn { background: var(--nm-bg); color: var(--nm-accent); border: 0; border-radius: 16px; padding: 14px 22px; font-weight: 700;
+  box-shadow: 8px 8px 16px var(--nm-dark), -8px -8px 16px var(--nm-light); transition: box-shadow .15s ease; }
+.auth .box .btn:hover { box-shadow: 5px 5px 10px var(--nm-dark), -5px -5px 10px var(--nm-light); }
+.auth .box .btn:active { box-shadow: inset 5px 5px 10px var(--nm-dark), inset -5px -5px 10px var(--nm-light); }
+.auth .box .btn:focus-visible { outline: 3px solid var(--nm-accent); outline-offset: 3px; }
+.auth .box .muted { color: #5B4B78; }
+.auth .box .field { margin: 0 0 20px; }
+.auth .box form .btn { margin-top: 10px; }
+@media (max-width: 480px) { .auth .box { padding: 28px 22px; border-radius: 20px; } }
 .auth .box h1 { font-size: 24px; }
 .auth .tag { font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--grape); font-weight: 700; }
 .qr { display: block; width: 200px; height: 200px; margin: 12px auto; border: 1px solid var(--line); border-radius: 8px; padding: 6px; background: #fff; }

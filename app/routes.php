@@ -68,6 +68,9 @@ $router->post('/roles/{id}/add-all',[\Eshcol\Ats\Controllers\FitController::clas
 $router->post('/roles/{id}/found', [RoleController::class, 'found']);
 $router->get('/roles/{id}/screen', [RoleController::class, 'screen']);
 $router->post('/roles/{id}/screen', [RoleController::class, 'screen']);
+$router->get('/roles/{id}/suitability', [RoleController::class, 'suitability']);
+$router->post('/roles/{id}/suitability', [RoleController::class, 'suitability']);
+$router->post('/suitability/settings', [RoleController::class, 'suitabilitySettings']);
 
 // Categories (13 Nov 2026): field of work, seniority, where they'd work; the trial and the category test.
 $router->get('/settings/categories', [\Eshcol\Ats\Controllers\CategoryController::class, 'settings']);
@@ -288,9 +291,21 @@ $router->get('/joinings/{id}/json', [\Eshcol\Ats\Controllers\JoiningController::
 $router->post('/joinings/{id}/status', [\Eshcol\Ats\Controllers\JoiningController::class, 'status']);
 $router->post('/joinings/{id}/refresh', [\Eshcol\Ats\Controllers\JoiningController::class, 'refresh']);
 $router->post('/joinings/hrms-link', [\Eshcol\Ats\Controllers\JoiningController::class, 'hrmsLink']);
+// Reading back from the HRMS (28 Nov 2026): rates and leavers.
+$router->post('/joinings/hrms-fetch', [\Eshcol\Ats\Controllers\JoiningController::class, 'fetchHrms']);
+$router->post('/joinings/leavers/{id}/handled', [\Eshcol\Ats\Controllers\JoiningController::class, 'leaverHandled']);
+$router->post('/settings/staffing/rates/hrms', [\Eshcol\Ats\Controllers\StaffingController::class, 'useHrms']);
 // The HRMS's signed server-to-server link (25 Nov 2026): it fetches joining records and reports what it imported.
 $router->get('/hooks/hrms/joinings', [\Eshcol\Ats\Controllers\HrmsApiController::class, 'joinings'], public: true);
 $router->post('/hooks/hrms/joinings/{id}/imported', [\Eshcol\Ats\Controllers\HrmsApiController::class, 'imported'], public: true);
+// Claude's read-only link (28 Nov 2026): GET only, signed; the owner makes the key on /connector.
+$router->get('/connector', [\Eshcol\Ats\Controllers\McpApiController::class, 'page']);
+$router->post('/connector', [\Eshcol\Ats\Controllers\McpApiController::class, 'save']);
+$router->get('/hooks/mcp/positions', [\Eshcol\Ats\Controllers\McpApiController::class, 'positions'], public: true);
+$router->get('/hooks/mcp/positions/{id}', [\Eshcol\Ats\Controllers\McpApiController::class, 'position'], public: true);
+$router->get('/hooks/mcp/positions/{id}/candidates', [\Eshcol\Ats\Controllers\McpApiController::class, 'candidates'], public: true);
+$router->get('/hooks/mcp/candidates/{id}', [\Eshcol\Ats\Controllers\McpApiController::class, 'candidate'], public: true);
+$router->get('/hooks/mcp/search', [\Eshcol\Ats\Controllers\McpApiController::class, 'search'], public: true);
 $router->post('/placements/{id}', [\Eshcol\Ats\Controllers\PlacementController::class, 'save']);
 $router->post('/placements/{id}/checkin/{day}', [\Eshcol\Ats\Controllers\PlacementController::class, 'checkin']);
 $router->post('/placements/{id}/left', [\Eshcol\Ats\Controllers\PlacementController::class, 'left']);

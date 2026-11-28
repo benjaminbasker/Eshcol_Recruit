@@ -15,6 +15,15 @@ $isShort = fn (array $a): bool => \Eshcol\Ats\Services\Shortlists::isShortlisted
 // The same key details on every list (16 Nov 2026), for everyone on the position, in one go.
 $kfMap = (new \Eshcol\Ats\Services\KeyFacts(\Eshcol\Ats\App::get()))->forCandidates(array_column($all, 'candidate_id'));
 $kfOf = fn (array $a): array => $kfMap[(int) $a['candidate_id']] ?? [];
+// "Same kind of work?" (27 Nov 2026): Claude's reading of the whole CV against the whole job description; a chip for "no" and "maybe".
+$suitMap = \Eshcol\Ats\Services\SuitabilityCheck::forRole(\Eshcol\Ats\App::get(), (int) $role['id']);
+$suitTrial = \Eshcol\Ats\Services\SuitabilityCheck::mode(\Eshcol\Ats\App::get()) === 'trial';
+$suitChip = function (array $a) use ($suitMap, $suitTrial): string {
+    $x = $suitMap[(int) $a['id']] ?? null;
+    if (!$x || $x[0] === 'yes') { return ''; }
+    return '<span class="chip ' . ($x[0] === 'no' ? 'no' : 'sand') . '" style="text-decoration:none" title="' . e('Claude read the whole CV against the whole job description' . ($suitTrial ? ' (trial)' : '') . ': ' . $x[2]) . '">'
+        . ($x[0] === 'no' ? 'Different kind of work' : 'Related: check') . '</span> ';
+};
 // Responded / Yet to respond, ranked (17 Nov 2026): "responded" = answered the details request or wrote back to us;
 // "yet to respond" = asked or written to, no answer yet. Ranked by Claude's assessment, else the keyword score.
 // Closed stages (Not suitable, Withdrawn, No response, Future requirement) are left out and counted.
@@ -79,7 +88,7 @@ $fitChip = function (array $a) use ($fit, $sentToClient): string {
         ? ' <span class="chip sand" title="The position\'s requirements changed after this assessment: press Re-assess everyone on the Claude tab">role changed</span>' : '';
     return $sentChip . $staleChip . '<span class="chip ' . (['Strong' => 'yes', 'Possible' => 'sand', 'Weak' => 'no'][$f['band']] ?? '') . '" style="text-decoration:none" title="Assessed by Claude">Claude ' . (int) $f['score'] . ' · ' . e($f['band']) . '</span>';
 };
-$row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientDecisions, $notice, $qChip, $fitChip, $isShort, $kfOf, $rankScore, $fitRowsAll, $who, $openingLocality, $openingDocIds): string {
+$row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientDecisions, $notice, $qChip, $fitChip, $isShort, $kfOf, $rankScore, $fitRowsAll, $who, $openingLocality, $openingDocIds, $suitChip): string {
     // In a ranked list the score shown is the one it is ranked by (Claude's, else the keyword score).
     $sc = $rank !== null ? $rankScore($a) : ($a['eff_score'] !== null ? (int) $a['eff_score'] : null);
     $cd = $clientDecisions[(int) $a['id']] ?? null;
@@ -100,6 +109,7 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
             <div><?= $kfOf($a) ? \Eshcol\Ats\Services\KeyFacts::line($kfOf($a), ['responded']) . ' ' . \Eshcol\Ats\Services\KeyFacts::cvButton($kfOf($a)) : '' ?></div>
             <div style="margin-top:4px">
               <?php if (isset($a['tier_label'])): ?><span class="chip <?= $a['tier'] === 1 ? 'yes' : ($a['tier'] === 0 ? 'no' : 'sand') ?>" title="Where they live, by the position's tiers"><?= e($a['tier_label']) ?></span><?php endif; ?>
+              <?= $suitChip($a) ?>
               <?= $fitChip($a) ?>
               <?php if ($a['fit_note']): ?><span class="chip <?= $a['source'] === 'routed' ? 'sand' : 'flag' ?>"><?= $a['source'] === 'routed' ? '↪ ' : '⚠ ' ?><?= e($a['fit_note']) ?></span><?php endif; ?>
               <?php if ($cd): ?><span class="chip <?= ['shortlist' => 'yes', 'hold' => 'sand', 'reject' => 'flag'][$cd] ?>">Client: <?= e(\Eshcol\Ats\Services\Shortlists::DECISIONS[$cd]) ?></span><?php endif; ?>
@@ -231,7 +241,8 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
   $pipeAside = !$isPool && in_array($who, ['responded', 'waiting', 'short'], true); ?>
   <div class="pipe-layout<?= $pipeAside ? ' with-aside' : '' ?>"><div class="pipe-main">
   <?php if (!$isPool && !$pipeAside && ((\Eshcol\Ats\Auth::user()['role'] ?? '') === 'owner')): ?>
-    <p class="small" style="margin:0 0 8px;text-align:right"><a href="/roles/<?= (int) $role['id'] ?>/screen"><?= icon('check', 'sm') ?> Screening rules: check who doesn't meet them</a></p>
+    <p class="small" style="margin:0 0 8px;text-align:right"><a href="/roles/<?= (int) $role['id'] ?>/suitability"><?= icon('sparkles', 'sm') ?> Kind of work: does each CV match this job?</a> &nbsp;·&nbsp;
+      <a href="/roles/<?= (int) $role['id'] ?>/screen"><?= icon('check', 'sm') ?> Screening rules: check who doesn't meet them</a></p>
   <?php endif; ?>
   <nav class="stage-tabs who-tabs" aria-label="Candidates">
     <a href="<?= $tabUrl('responded') ?>" class="w-resp<?= $who === 'responded' ? ' on' : '' ?><?= $responded ? '' : ' zero' ?>"<?= $who === 'responded' ? ' aria-current="page"' : '' ?>>✓ Responded, ranked <b>(<?= count($responded) ?>)</b></a>
@@ -333,7 +344,7 @@ $row = function (array $a, ?int $rank = null) use ($stages, $role, $qs, $clientD
                   <?php if (isset($a['tier_label']) || $cd || $a['fit_note'] || $a['do_not_contact'] || !empty($a['unreliable_at']) || isset($qs[(int) $a['id']]) || isset($fit['rows'][(int) $a['id']]) || isset($sentToClient[(int) $a['candidate_id']])): ?>
                     <div class="tags">
                       <?php if (isset($a['tier_label'])): ?><span class="chip <?= $a['tier'] === 1 ? 'yes' : ($a['tier'] === 0 ? 'no' : 'sand') ?>" style="text-decoration:none"><?= e($a['tier_label']) ?></span><?php endif; ?>
-                      <?= $fitChip($a) ?>
+                      <?= $suitChip($a) ?><?= $fitChip($a) ?>
                       <?php if ($a['do_not_contact']): ?><span class="chip no" style="text-decoration:none">do not contact</span><?php endif; ?>
                       <?php if (!empty($a['unreliable_at'])): ?><span class="chip no" style="text-decoration:none" title="<?= e(\Eshcol\Ats\Services\Reliability::describe($a)) ?>">unreliable</span><?php endif; ?>
                       <?php if ($cd): ?><span class="chip <?= ['shortlist' => 'yes', 'hold' => 'sand', 'reject' => 'flag'][$cd] ?>">Client: <?= e(\Eshcol\Ats\Services\Shortlists::DECISIONS[$cd]) ?></span><?php endif; ?>
