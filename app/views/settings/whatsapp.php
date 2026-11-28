@@ -23,6 +23,20 @@ foreach ($wa['templates'] as $t) {
   </form>
 </section>
 
+<section class="card" style="max-width:900px" id="webhook">
+  <h2>Replies (webhook)</h2>
+  <p class="small">Give WABridge this address so replies and button taps come back to Recruit as well as to your phone. Keep it private: anyone with it could post here.</p>
+  <p><input type="text" readonly value="<?= e($wa['webhook']) ?>" onclick="this.select()" style="width:100%;font-family:monospace" aria-label="Webhook address"></p>
+  <p class="small muted">A reply of STOP turns WhatsApp off for that candidate.</p>
+  <?php if ($wa['replies']): ?>
+  <table class="list compact"><thead><tr><th>When</th><th>From</th><th>Kind</th><th>Message</th></tr></thead><tbody>
+    <?php foreach ($wa['replies'] as $r): ?><tr><td class="small"><?= e(nice_date($r['received_at'])) ?></td>
+      <td class="small"><?= $r['candidate_id'] ? '<a href="/candidates/' . (int) $r['candidate_id'] . '">' . e((string) $r['full_name']) . '</a>' : e((string) ($r['from_masked'] ?? 'Unknown')) ?></td>
+      <td class="small"><?= e($r['kind']) ?></td><td class="small"><?= e((string) ($r['body'] ?? '')) ?></td></tr><?php endforeach; ?>
+  </tbody></table>
+  <?php else: ?><p class="small muted">Nothing received yet.</p><?php endif; ?>
+</section>
+
 <section class="card" style="max-width:900px" id="auto">
   <h2>Sent on their own</h2>
   <p class="small">Thank-you, questionnaire and interview messages go with their emails. These go when you change a stage, or the evening before someone joins. "Ask for a call" and "We tried to call you" are on each position on the candidate's page.</p>

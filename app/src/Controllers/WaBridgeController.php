@@ -8,6 +8,7 @@ use Eshcol\Ats\Auth;
 use Eshcol\Ats\Http;
 use Eshcol\Ats\Secrets;
 use Eshcol\Ats\Services\WaBridge;
+use Eshcol\Ats\Services\WaInbox;
 
 /** Settings › WhatsApp: the WABridge keys (typed by the owner), the device, sending on or off, templates, a test. */
 final class WaBridgeController extends Controller
@@ -27,7 +28,8 @@ final class WaBridgeController extends Controller
             'templates' => $W->templates(), 'recent' => $W->recent(25), 'synced' => $this->db->col('SELECT MAX(synced_at) FROM whatsapp_templates'),
             'auto' => ['selected' => $this->app->setting('wa_auto_selected', '1') === '1', 'not_selected' => $this->app->setting('wa_auto_not_selected', '1') === '1',
                 'joining_time' => date('H:i', strtotime('2000-01-01 ' . $this->app->setting('joining_report_time', '9:00 AM')))],
-            'queued' => (int) $this->db->col("SELECT COUNT(*) FROM whatsapp_queue WHERE status = 'queued'"), 'held' => (int) $this->db->col("SELECT COUNT(*) FROM whatsapp_queue WHERE status = 'held'")]]);
+            'queued' => (int) $this->db->col("SELECT COUNT(*) FROM whatsapp_queue WHERE status = 'queued'"), 'held' => (int) $this->db->col("SELECT COUNT(*) FROM whatsapp_queue WHERE status = 'held'"),
+            'webhook' => (new WaInbox($this->app))->webhookUrl(), 'replies' => (new WaInbox($this->app))->recent(25)]]);
     }
 
     public function save(): never
@@ -96,5 +98,25 @@ final class WaBridgeController extends Controller
         $out = $W->processQueue(5);
         $row = $this->db->one('SELECT status, last_error FROM whatsapp_queue WHERE id = ?', [$id]);
         $this->back(($row['status'] ?? '') === 'sent' ? null : ('Not sent: ' . ($row['last_error'] ?? $out)), 'Sent. Check the phone; the delivery report follows within a few minutes.');
+    }
+
+    /** WABridge's webhook. A GET (a check that the address works) echoes any challenge; a POST is stored. */
+    public function hook(string|int $token): never
+    {
+        $in = new WaInbox($this->app);
+        if (!$in->validToken((string) $token)) {
+            Http::json(['ok' => false], 404);
+        }
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+            $ch = (string) ($_GET['hub_challenge'] ?? $_GET['challenge'] ?? '');
+            if ($ch !== '' && preg_match('/^[A-Za-z0-9_.-]{1,200}$/', $ch)) {
+                header('Content-Type: text/plain; charset=utf-8');
+                echo $ch;
+                exit;
+            }
+            Http::json(['ok' => true]);
+        }
+        $raw = (string) file_get_contents('php://input', false, null, 0, 262144);
+        Http::json(['ok' => true, 'recorded' => $in->record($raw)]);
     }
 }
