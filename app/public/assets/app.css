@@ -438,6 +438,20 @@ table.list.compact th, table.list.compact td { padding: 7px 10px; font-size: 13.
 .compose[open] summary { display: none; }
 .compose textarea { width: 100%; font-family: inherit; font-size: 15px; }
 tr.unread td { background: var(--primary-soft); }
+/* Messages inbox (28 Nov 2026): one plain line per conversation; unread bold, read regular. */
+.inbox { padding: 0; overflow: hidden; }
+.inbox-row { display: grid; grid-template-columns: 10px minmax(150px, 230px) minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 13px 18px; border-top: 1px solid var(--line, #E7E2EF); color: var(--ink, #1C1030); text-decoration: none; font-weight: 400; }
+.inbox-row:first-child { border-top: 0; }
+.inbox-row:hover { background: var(--primary-soft); }
+.inbox-dot { width: 8px; height: 8px; border-radius: 50%; }
+.inbox-row.is-unread .inbox-dot { background: var(--grape, #7946B2); }
+.inbox-who { min-width: 0; }
+.inbox-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-role { display: block; font-size: 12.5px; color: var(--muted, #6E6780); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-text { min-width: 0; font-size: 14px; color: var(--muted, #6E6780); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inbox-when { font-size: 13px; color: var(--muted, #6E6780); white-space: nowrap; }
+.inbox-row.is-unread .inbox-name, .inbox-row.is-unread .inbox-text, .inbox-row.is-unread .inbox-when { font-weight: 700; color: var(--ink, #1C1030); }
+@media (max-width: 700px) { .inbox-row { grid-template-columns: 10px minmax(0, 1fr) auto; } .inbox-text { grid-column: 2 / 4; white-space: normal; } }
 .cand-msg-body { font-size: 14px; line-height: 1.55; white-space: normal; overflow-wrap: anywhere; }
 .pub-q textarea.pub-text { width: 100%; font-size: 16px; padding: 11px 12px; min-height: 110px; resize: vertical; font-family: inherit; }
 .pub-role { margin: 16px 0 0; font-size: 12px; letter-spacing: .8px; text-transform: uppercase; color: var(--plum); font-weight: 700; }

@@ -1,27 +1,28 @@
-<?php /** @var array $rows */ ?>
+<?php /** Messages: a plain inbox (simplified 28 Nov 2026). Unread in bold, read in regular; a click opens the conversation. @var array $rows */
+$when = function (string $dt): string {
+    $t = strtotime($dt);
+    if (date('Y-m-d', $t) === date('Y-m-d')) {
+        return date('g:i a', $t);
+    }
+    return date('Y', $t) === date('Y') ? date('j M', $t) : date('j M Y', $t);
+};
+?>
 <div class="page-head">
   <div><p class="eyebrow">Candidates</p><h1>Messages</h1>
-    <p class="muted">Emails between you and candidates. Their replies to any of our emails (and what they write on their application form) arrive here through resume@; your answers go from resume@ and their reply comes back into the same conversation.</p></div>
+    <p class="muted">Replies from candidates, newest first. Unread ones are in bold.</p></div>
 </div>
 <?php if (!$rows): ?>
   <div class="card empty">No messages yet. When a candidate replies to one of our emails, it appears here.</div>
 <?php else: ?>
-  <div class="table-wrap"><table class="list">
-    <thead><tr><th>Candidate</th><th>Latest</th><th>When</th><th></th></tr></thead>
-    <?php $msgKf = (new \Eshcol\Ats\Services\KeyFacts(\Eshcol\Ats\App::get()))->forCandidates(array_column($rows, 'candidate_id')); // the same key details on every list (16 Nov 2026) ?>
-    <tbody><?php prime_stages(array_column($rows, 'candidate_id')); foreach ($rows as $r): ?>
-      <tr id="m-<?= (int) $r['candidate_id'] ?>"<?= $r['unread'] ? ' class="unread"' : '' ?>>
-        <td><a href="/candidates/<?= (int) $r['candidate_id'] ?>#messages"><b><?= e($r['full_name'] ?: 'Candidate') ?></b></a>
-          <?php if ($r['unread']): ?><span class="chip yes"><?= (int) $r['unread'] ?> new</span><?php endif; ?>
-          <?php if ($r['removal'] === 'asked'): ?><span class="chip flag">may want removal</span><?php endif; ?>
-          <?= stage_tags($r['candidate_id']) ?>
-          <br><span class="small muted"><?= e(ref_candidate((int) $r['candidate_id'])) ?></span>
-          <?php $mk = $msgKf[(int) $r['candidate_id']] ?? []; if ($mk): ?><br><?= \Eshcol\Ats\Services\KeyFacts::line($mk) ?> <?= \Eshcol\Ats\Services\KeyFacts::cvButton($mk) ?><?php endif; ?></td>
-        <td class="small"><?= $r['direction'] === 'out' ? '<span class="muted">You:</span> ' : ($r['source'] === 'form' ? '<span class="muted">Form:</span> ' : '') ?><?= e(mb_strimwidth(preg_replace('/\s+/u', ' ', (string) $r['body']), 0, 110, '…')) ?></td>
-        <td class="small nowrap"><?= e(nice_date($r['received_at'], true)) ?></td>
-        <td class="nowrap"><a class="btn ghost small" href="/candidates/<?= (int) $r['candidate_id'] ?>#messages"><?= $r['direction'] === 'in' ? 'Reply' : 'Open' ?></a></td>
-      </tr>
-    <?php endforeach; ?></tbody>
-  </table></div>
-  <script type="module" src="<?= asset('cv-viewer.js') ?>"></script>
+  <div class="card inbox">
+    <?php foreach ($rows as $r): $u = (int) $r['unread'] > 0; ?>
+      <a class="inbox-row<?= $u ? ' is-unread' : '' ?>" id="m-<?= (int) $r['candidate_id'] ?>" href="/candidates/<?= (int) $r['candidate_id'] ?>#messages">
+        <span class="inbox-dot" aria-hidden="true"></span>
+        <span class="inbox-who"><span class="inbox-name"><?= e($r['full_name'] ?: 'Candidate') ?></span>
+          <?php if ($r['role_title']): ?><span class="inbox-role"><?= e($r['role_title']) ?></span><?php endif; ?></span>
+        <span class="inbox-text"><?php if ($r['removal'] === 'asked'): ?><span class="chip flag">may want removal</span> <?php endif; ?><?= $r['direction'] === 'out' ? 'You: ' : '' ?><?= e(mb_strimwidth(preg_replace('/\s+/u', ' ', (string) $r['body']), 0, 140, '…')) ?></span>
+        <span class="inbox-when"><?= e($when((string) $r['received_at'])) ?><?php if ($u): ?><span class="visually-hidden">, unread</span><?php endif; ?></span>
+      </a>
+    <?php endforeach; ?>
+  </div>
 <?php endif; ?>

@@ -231,7 +231,7 @@ final class CandidateMessages
     /** Latest message per candidate, unread first: the Messages page. */
     public function inbox(int $limit = 100): array
     {
-        return $this->app->db->all("SELECT m.*, c.full_name, (SELECT COUNT(*) FROM candidate_messages u WHERE u.candidate_id = m.candidate_id AND u.read_at IS NULL) AS unread
+        return $this->app->db->all("SELECT m.*, c.full_name, (SELECT r.title FROM applications a JOIN roles r ON r.id = a.role_id WHERE a.candidate_id = m.candidate_id ORDER BY a.id DESC LIMIT 1) AS role_title, (SELECT COUNT(*) FROM candidate_messages u WHERE u.candidate_id = m.candidate_id AND u.read_at IS NULL) AS unread
             FROM candidate_messages m JOIN candidates c ON c.id = m.candidate_id
             WHERE m.id = (SELECT m2.id FROM candidate_messages m2 WHERE m2.candidate_id = m.candidate_id ORDER BY m2.received_at DESC, m2.id DESC LIMIT 1)
             ORDER BY unread > 0 DESC, m.received_at DESC LIMIT " . (int) $limit);
