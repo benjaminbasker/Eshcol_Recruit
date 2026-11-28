@@ -11,6 +11,7 @@
 
 <p class="small" style="margin:-8px 0 16px"><a class="btn small ghost" href="/settings/staffing">Staffing: statutory rates, minimum wages, licence</a> <a class="btn small ghost" href="/settings/whatsapp">WhatsApp to candidates</a></p>
 
+<div class="sections-ruled">
 <div class="grid g2">
   <section class="card" id="stages">
     <h2>Pipeline stages</h2>
@@ -325,3 +326,4 @@
     <tbody><?php foreach ($dict as $d): ?><tr><td><b><?= e($d['canonical']) ?></b></td><td class="small"><?= e((string) $d['area']) ?></td><td><?= e(ucfirst($d['category'])) ?></td><td class="small muted"><?= e($d['terms']) ?></td></tr><?php endforeach; ?></tbody>
   </table></div>
 </section>
+</div>
