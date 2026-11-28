@@ -29,7 +29,7 @@ final class WaBridgeController extends Controller
             'auto' => ['selected' => $this->app->setting('wa_auto_selected', '1') === '1', 'not_selected' => $this->app->setting('wa_auto_not_selected', '1') === '1',
                 'joining_time' => date('H:i', strtotime('2000-01-01 ' . $this->app->setting('joining_report_time', '9:00 AM')))],
             'queued' => (int) $this->db->col("SELECT COUNT(*) FROM whatsapp_queue WHERE status = 'queued'"), 'held' => (int) $this->db->col("SELECT COUNT(*) FROM whatsapp_queue WHERE status = 'held'"),
-            'webhook' => (new WaInbox($this->app))->webhookUrl(), 'replies' => (new WaInbox($this->app))->recent(25)]]);
+            'details' => $this->detailsBox(), 'webhook' => (new WaInbox($this->app))->webhookUrl(), 'replies' => (new WaInbox($this->app))->recent(25)]]);
     }
 
     public function save(): never
@@ -71,6 +71,28 @@ final class WaBridgeController extends Controller
         $this->back(null, 'Saved.');
     }
 
+    /** "Remind about the details form": queue questions_request for everyone still waiting on the ticked positions, at the chosen time. */
+    public function detailsReminders(): never
+    {
+        Auth::requireOwner();
+        $roles = array_map('intval', (array) ($_POST['roles'] ?? []));
+        $when = strtotime(str_replace('T', ' ', (string) ($_POST['when'] ?? '')));
+        if (!$roles) {
+            $this->back('Tick at least one position.', '');
+        }
+        if (!$when || $when < time() - 60) {
+            $this->back('Choose a time from now on.', '');
+        }
+        $n = (new \Eshcol\Ats\Services\WaMessages($this->app))->queueDetailsReminders($roles, date('Y-m-d H:i:s', $when));
+        $this->back(null, $n ? "$n reminder(s) queued for " . date('D j M, g:i a', $when) . '. Cancel them below if you change your mind.' : 'Nobody to remind.');
+    }
+
+    public function cancelDetailsReminders(): never
+    {
+        Auth::requireOwner();
+        $n = (new \Eshcol\Ats\Services\WaMessages($this->app))->cancelDetailsReminders();
+        $this->back(null, "$n reminder(s) cancelled. Nothing was sent.");
+    }
     public function sync(): never
     {
         Auth::requireOwner();
@@ -118,5 +140,18 @@ final class WaBridgeController extends Controller
         }
         $raw = (string) file_get_contents('php://input', false, null, 0, 262144);
         Http::json(['ok' => true, 'recorded' => $in->record($raw)]);
+    }
+
+    /** The open positions with how many are waiting on the details form, and what is already queued. */
+    private function detailsBox(): array
+    {
+        $M = new \Eshcol\Ats\Services\WaMessages($this->app);
+        $roles = $this->db->all("SELECT r.id, r.title, cl.name AS client FROM roles r JOIN clients cl ON cl.id = r.client_id WHERE r.status = 'open' AND r.is_pool = 0 ORDER BY r.title");
+        foreach ($roles as &$r) {
+            $r['waiting'] = count($M->detailsWaiting([(int) $r['id']]));
+        }
+        unset($r);
+        [$n, $t] = $M->detailsRemindersQueued();
+        return ['roles' => $roles, 'queued' => $n, 'at' => $t];
     }
 }

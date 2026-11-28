@@ -37,6 +37,22 @@ foreach ($wa['templates'] as $t) {
   <?php else: ?><p class="small muted">Nothing received yet.</p><?php endif; ?>
 </section>
 
+<section class="card" style="max-width:900px" id="details-reminder">
+  <h2>Remind about the details form</h2>
+  <p class="small">A WhatsApp ("A few questions", with the button to their own form) to everyone on the ticked positions who was mailed for their details and hasn't answered. Only people whose application is still open, with a mobile, and not marked do not contact, red-listed or with WhatsApp off. A link that had run out is opened again for 14 days.</p>
+  <?php $d = $wa['details']; if ($d['queued']): ?>
+    <div class="flash info"><div><b><?= (int) $d['queued'] ?></b> reminder<?= $d['queued'] > 1 ? 's' : '' ?> queued for <?= e(date('D j M, g:i a', strtotime((string) $d['at']))) ?>.
+      <form method="post" action="/settings/whatsapp/details-reminders/cancel" style="display:inline"><?= csrf() ?><button class="btn ghost small" type="submit">Cancel them</button></form></div></div>
+  <?php endif; ?>
+  <form method="post" action="/settings/whatsapp/details-reminders"><?= csrf() ?>
+    <?php foreach ($d['roles'] as $r): ?>
+      <label style="display:block;margin:4px 0"><input type="checkbox" name="roles[]" value="<?= (int) $r['id'] ?>"<?= $r['waiting'] ? '' : ' disabled' ?>> <b><?= e($r['title']) ?></b> <span class="small muted"><?= e($r['client']) ?> · <?= (int) $r['waiting'] ?> waiting</span></label>
+    <?php endforeach; ?>
+    <div class="row" style="align-items:flex-end;margin-top:8px"><div class="field" style="flex:0 1 240px"><label for="dr-when">Send at</label><input type="datetime-local" id="dr-when" name="when" value="<?= e(date('Y-m-d', strtotime('+1 day')) . 'T10:00') ?>"></div>
+      <div class="field"><button class="btn small" type="submit">Queue the reminders</button></div></div>
+  </form>
+</section>
+
 <section class="card" style="max-width:900px" id="auto">
   <h2>Sent on their own</h2>
   <p class="small">Thank-you, questionnaire and interview messages go with their emails. These go when you change a stage, or the evening before someone joins. "Ask for a call" and "We tried to call you" are on each position on the candidate's page.</p>

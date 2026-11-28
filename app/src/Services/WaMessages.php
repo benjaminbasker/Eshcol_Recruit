@@ -163,4 +163,78 @@ final class WaMessages
         }
         return $n ? "$n joining reminder(s) queued" : '';
     }
+
+    /**
+     * "Remind about the details form" (28 Nov 2026): everyone on these positions who was mailed for their details and
+     * hasn't answered, whose application is still open, who can get WhatsApp. One row per person (their lead link).
+     * @param list<int> $roleIds
+     * @return list<array{lead:int, candidate_id:int, first:string, title:string, role_id:int, expired:bool}>
+     */
+    public function detailsWaiting(array $roleIds): array
+    {
+        $roleIds = array_values(array_filter(array_map('intval', $roleIds)));
+        if (!$roleIds) {
+            return [];
+        }
+        $in = implode(',', $roleIds);
+        $rows = $this->app->db->all("SELECT COALESCE(q.parent_id, q.id) AS lead, q.role_id, r.title, c.id AS candidate_id, c.first_name, c.full_name, l.status AS lead_status
+            FROM questionnaires q
+            JOIN questionnaires l ON l.id = COALESCE(q.parent_id, q.id)
+            JOIN applications a ON a.id = q.application_id
+            JOIN stages s ON s.id = a.stage_id AND s.kind = 'active'
+            JOIN roles r ON r.id = q.role_id
+            JOIN candidates c ON c.id = q.candidate_id
+            WHERE q.role_id IN ($in) AND l.status IN ('sent','opened','expired') AND l.token_enc <> '-'
+              AND " . Contact::putForwardSql('c') . " AND c.whatsapp_off = 0 AND c.phone_norm IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM whatsapp_queue w WHERE w.related_type = 'details_reminder' AND w.related_id = l.id AND w.status IN ('queued','held'))
+            ORDER BY q.id");
+        $out = [];
+        foreach ($rows as $r) {
+            $lead = (int) $r['lead'];
+            if (isset($out[$lead])) {
+                continue;
+            }
+            $out[$lead] = ['lead' => $lead, 'candidate_id' => (int) $r['candidate_id'], 'first' => Questionnaires::firstName($r), 'title' => (string) $r['title'],
+                'role_id' => (int) $r['role_id'], 'expired' => $r['lead_status'] === 'expired'];
+        }
+        return array_values($out);
+    }
+
+    /** Queue the reminders (questions_request, with their own link) to go at $when. A link that had run out is opened again. Returns how many. */
+    public function queueDetailsReminders(array $roleIds, string $when): int
+    {
+        $db = $this->app->db;
+        $Q = new Questionnaires($this->app);
+        $W = new WaBridge($this->app);
+        $n = 0;
+        foreach ($this->detailsWaiting($roleIds) as $p) {
+            if ($p['expired']) {
+                $db->run("UPDATE questionnaires SET status = 'sent', expires_at = ? WHERE id = ? OR parent_id = ?", [Questionnaires::openUntil($when), $p['lead'], $p['lead']]);
+            } else {
+                $db->run('UPDATE questionnaires SET expires_at = GREATEST(expires_at, ?) WHERE id = ? OR parent_id = ?', [Questionnaires::openUntil($when), $p['lead'], $p['lead']]);
+            }
+            $link = $Q->link($p['lead']);
+            $token = substr($link, strrpos($link, '/') + 1);
+            if ($token === '' || $W->toCandidate($p['candidate_id'], 'questions_request', [$p['first'] !== '' ? $p['first'] : 'there', $p['title']], 'details_reminder', $p['lead'], $when, [$token]) === null) {
+                continue;
+            }
+            $n++;
+        }
+        Audit::log('wa_details_reminders_queued', 'setting', null, ['roles' => array_map('intval', $roleIds), 'when' => $when, 'count' => $n]);
+        return $n;
+    }
+
+    /** Reminders queued and not gone yet: [count, earliest time]. */
+    public function detailsRemindersQueued(): array
+    {
+        $r = $this->app->db->one("SELECT COUNT(*) AS n, MIN(not_before) AS t FROM whatsapp_queue WHERE related_type = 'details_reminder' AND status IN ('queued','held')");
+        return [(int) ($r['n'] ?? 0), $r['t'] ?? null];
+    }
+
+    public function cancelDetailsReminders(): int
+    {
+        $n = $this->app->db->run("UPDATE whatsapp_queue SET status = 'cancelled', last_error = 'Cancelled by you' WHERE related_type = 'details_reminder' AND status IN ('queued','held')")->rowCount();
+        Audit::log('wa_details_reminders_cancelled', 'setting', null, ['count' => $n]);
+        return $n;
+    }
 }

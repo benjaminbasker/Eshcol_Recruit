@@ -89,8 +89,34 @@ try {
     $check('queued the evening before: ' . $out, $jr && json_decode((string) $jr['variables'], true)[1] === 'Trainee Technician'
         && str_starts_with(json_decode((string) $jr['variables'], true)[2], 'tomorrow, ') && str_contains(json_decode((string) $jr['variables'], true)[3], 'Thiruvallur plant'));
     $check('and only once', $M->joiningReminders() === '');
+
+    echo "Remind about the details form\n";
+    $c3 = $db->insert('candidates', ['full_name' => "Zz Wamsg Kavya", 'first_name' => 'Kavya', 'email' => "zz.wamsg.k.$tag@example.test", 'phone' => '98765 12803', 'phone_norm' => '9876512803', 'source' => 'manual']);
+    $app3 = $db->insert('applications', ['candidate_id' => $c3, 'role_id' => $role, 'stage_id' => $applied, 'source' => 'upload']);
+    $Q = new \Eshcol\Ats\Services\Questionnaires($app);
+    $lead = $Q->create($app3, null);
+    $db->run("UPDATE questionnaires SET status = 'expired', expires_at = NOW() - INTERVAL 1 DAY WHERE id = ?", [$lead]);
+    $w = $M->detailsWaiting([$role]);
+    $check('someone who has not answered (link run out) is waiting', count(array_filter($w, fn ($p) => $p['candidate_id'] === $c3)) === 1);
+    $check('and someone withdrawn is not', !array_filter($w, fn ($p) => $p['candidate_id'] === $cand));
+    $when = date('Y-m-d', strtotime('+1 day')) . ' 10:00:00';
+    $check('queued', $M->queueDetailsReminders([$role], $when) >= 1);
+    $r3 = $db->one("SELECT * FROM whatsapp_queue WHERE candidate_id = ? AND related_type = 'details_reminder'", [$c3]);
+    $check('for tomorrow at 10 am, with the name and position', $r3 && $r3['not_before'] === $when && json_decode((string) $r3['variables'], true) === ['Kavya', "Trainee ZZ$tag"]);
+    $btn3 = json_decode((string) $r3['button_vars'], true)[0] ?? '';
+    $open = $Q->byToken($btn3);
+    $check('the button opens their own form, open again', $open && (int) $open['id'] === $lead && $open['status'] === 'sent' && $open['expires_at'] > $when);
+    $check('not queued twice', $M->queueDetailsReminders([$role], $when) === 0);
+    $check('shown as queued', $M->detailsRemindersQueued()[0] >= 1);
+    $check('cancel: nothing goes', $M->cancelDetailsReminders() >= 1 && $db->col('SELECT status FROM whatsapp_queue WHERE id = ?', [$r3['id']]) === 'cancelled');
 } finally {
     $db->run('DELETE FROM whatsapp_queue WHERE candidate_id IN (?, ?)', [$cand, $red]);
+    if (isset($c3)) {
+        $db->run('DELETE FROM whatsapp_queue WHERE candidate_id = ?', [$c3]);
+        $db->run('DELETE FROM questionnaires WHERE candidate_id = ?', [$c3]);
+        $db->run('DELETE FROM applications WHERE candidate_id = ?', [$c3]);
+        $db->run('DELETE FROM candidates WHERE id = ?', [$c3]);
+    }
     $db->run('DELETE FROM joinings WHERE application_id IN (?, ?)', [$app1, $app2]);
     $db->run("DELETE FROM notes WHERE entity_type = 'candidate' AND entity_id IN (?, ?)", [$cand, $red]);
     $db->run('DELETE FROM stage_history WHERE application_id IN (?, ?)', [$app1, $app2]);

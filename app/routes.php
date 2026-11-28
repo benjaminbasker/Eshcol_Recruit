@@ -304,6 +304,8 @@ $router->post('/n/{token}', [\Eshcol\Ats\Controllers\NoLongerController::class, 
 $router->post('/settings/whatsapp', [\Eshcol\Ats\Controllers\WaBridgeController::class, 'save']);
 $router->post('/settings/whatsapp/sync', [\Eshcol\Ats\Controllers\WaBridgeController::class, 'sync']);
 $router->post('/settings/whatsapp/test', [\Eshcol\Ats\Controllers\WaBridgeController::class, 'test']);
+$router->post('/settings/whatsapp/details-reminders', [\Eshcol\Ats\Controllers\WaBridgeController::class, 'detailsReminders']);
+$router->post('/settings/whatsapp/details-reminders/cancel', [\Eshcol\Ats\Controllers\WaBridgeController::class, 'cancelDetailsReminders']);
 // WABridge's webhook: replies, button taps and delivery reports (secret in the address, 28 Nov 2026)
 $router->get('/hooks/wabridge/{token}', [\Eshcol\Ats\Controllers\WaBridgeController::class, 'hook'], public: true);
 $router->post('/hooks/wabridge/{token}', [\Eshcol\Ats\Controllers\WaBridgeController::class, 'hook'], public: true);
