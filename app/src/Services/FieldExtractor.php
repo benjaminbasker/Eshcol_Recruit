@@ -146,7 +146,7 @@ final class FieldExtractor
     /** @return array{0: ?string, 1: string} */
     private function name(string $text, string $filename): array
     {
-        $skip = '/resume|r[eé]sum[eé]|curriculum|vitae|\bcv\b|@|profile|objective|summary|address|mobile|phone|e-?mail|career|contact|declaration|experience|education|skills/i';
+        $skip = '/resume|r[eé]sum[eé]|curriculum|vitae|\bcv\b|@|profile|objective|summary|address|mobile|phone|e-?mail|career|contact|declaration|experience|education|skills|projects?\b|courses?\b|certific|internship|achievement|languages?\b|hobbies|interests|references?\b|personal|training|strengths/i';
         $lines = array_slice(array_values(array_filter(array_map('trim', explode("\n", $text)))), 0, 12);
         foreach ($lines as $line) {
             $line = trim(preg_replace('/^(name)\s*[:\-]\s*/i', '', $line));

@@ -43,7 +43,8 @@ $check('helper stage_tags() gives the same', stage_tags($c) === $all);
 
 echo "\nEvery list shows the stage\n";
 $views = dirname(__DIR__) . '/views/';
-foreach (['dashboard/index.php', 'emails/index.php', 'messages/index.php', 'questionnaire/ask.php', 'roles/matches.php', 'roles/_interviews.php',
+// My day and Messages are plain lists by Benjamin's choice (28 Nov 2026): no stage tags there.
+foreach (['emails/index.php', 'questionnaire/ask.php', 'roles/matches.php', 'roles/_interviews.php',
           'shortlist/show.php', 'joinings/index.php', 'roles/_found.php'] as $v) {
     $s = (string) file_get_contents($views . $v);
     $check("$v shows stage tags (and fetches them in one go)", str_contains($s, 'stage_tags(') && str_contains($s, 'prime_stages('));

@@ -19,6 +19,8 @@ final class WaBridge
     public const BASE = 'https://web.wabridge.com/api/';
     /** Final delivery states (no need to ask again). */
     private const FINAL = ['delivered', 'read', 'failed', 'deleted', 'undelivered'];
+    /** Candidate templates whose {{1}} is not the first name. */
+    private const NO_NAME = ['interview_reminder'];
 
     /** @var null|callable(string $endpoint, array $payload): array{0: int, 1: string} for tests */
     public static $transport = null;
@@ -165,8 +167,19 @@ final class WaBridge
                 $held++;
                 continue;
             }
+            // The name is looked up again now (28 Nov 2026): a quick CV read can take a heading ("Projects") for the
+            // name, and Claude's fuller reading corrects it minutes later, after the message was queued.
+            $vars = json_decode((string) $r['variables'], true) ?: [];
+            if ($r['candidate_id'] && $vars && !in_array($r['template'], self::NO_NAME, true)) {
+                $c = $db->one('SELECT first_name, full_name FROM candidates WHERE id = ?', [$r['candidate_id']]);
+                $now = $c ? Questionnaires::firstName($c) : '';
+                if ($now !== '' && $now !== $vars[0]) {
+                    $vars[0] = $now;
+                    $db->run('UPDATE whatsapp_queue SET variables = ? WHERE id = ?', [json_encode($vars, JSON_UNESCAPED_UNICODE), $r['id']]);
+                }
+            }
             [$j, $err] = $this->call('createmessage', ['destination_number' => $r['to_number'], 'template_id' => $t['template_id'],
-                'variables' => json_decode((string) $r['variables'], true) ?: [], 'button_variable' => json_decode((string) ($r['button_vars'] ?? '[]'), true) ?: [], 'media' => '', 'message' => '']);
+                'variables' => $vars, 'button_variable' => json_decode((string) ($r['button_vars'] ?? '[]'), true) ?: [], 'media' => '', 'message' => '']);
             if ($err) {
                 $db->run("UPDATE whatsapp_queue SET attempts = attempts + 1, last_error = ?, status = IF(attempts + 1 >= 5, 'failed', 'queued') WHERE id = ?", [mb_substr($err, 0, 500), $r['id']]);
                 $failed++;

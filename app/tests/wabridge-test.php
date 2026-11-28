@@ -44,7 +44,7 @@ WaBridge::$transport = function (string $endpoint, array $p) use (&$calls, &$sta
         default => [404, ''],
     };
 };
-$mk = fn (string $name, string $phone) => $db->insert('candidates', ['full_name' => $name, 'email' => strtolower(str_replace(' ', '.', $name)) . '@example.test', 'phone' => $phone, 'source' => 'manual']);
+$mk = fn (string $name, string $phone) => $db->insert('candidates', ['full_name' => $name, 'first_name' => substr($name, strrpos($name, ' ') + 1), 'email' => strtolower(str_replace(' ', '.', $name)) . '@example.test', 'phone' => $phone, 'source' => 'manual']);
 $a = $mk('Zz Wa Arun', '98765 12701');
 $b = $mk('Zz Wa Bala', '+91 98765 12702');
 $W = new WaBridge($app);
@@ -62,6 +62,12 @@ try {
     $W->processQueue();
     $sent = array_values(array_filter($calls, fn ($c) => $c[0] === 'createmessage'))[0][1] ?? [];
     $check('then sent to 919876512701 with the template ID and values', ($sent['destination_number'] ?? '') === '919876512701' && ($sent['template_id'] ?? '') === 'T-application_received' && ($sent['variables'] ?? []) === ['Arun', 'Trainee Technician']);
+    // The name is looked up again when sending: queued as "Projects" (a CV heading), sent with the corrected name.
+    $q3 = $W->toCandidate($a, 'application_received', ['Projects', 'Trainee Technician']);
+    $calls = [];
+    $W->processQueue();
+    $sent3 = array_values(array_filter($calls, fn ($c) => $c[0] === 'createmessage'))[0][1] ?? [];
+    $check('a wrong name at queue time is corrected when sending', ($sent3['variables'] ?? []) === ['Arun', 'Trainee Technician']);
     $W->pollDelivery();
     $check('delivery report: read', $db->col('SELECT dlr_status FROM whatsapp_queue WHERE id = ?', [$q]) === 'read');
 
