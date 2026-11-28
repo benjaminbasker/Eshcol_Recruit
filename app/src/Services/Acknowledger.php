@@ -255,8 +255,8 @@ final class Acknowledger
             ]],
             'cards' => true,
             'about' => [
-                'If this role turns out not to be the right fit, we may consider you for other suitable roles ' . Engagement::otherRoles($type) . ' over the next five years, as our <a href="' . $privacy . '" target="_blank" style="color:#7946B2;">privacy policy</a> explains. If you would rather we didn\'t, just reply to this email with "Please remove me" and we will delete your details.',
-                "If this role turns out not to be the right fit, we may consider you for other suitable roles " . Engagement::otherRoles($type) . " over the next five years, as our privacy policy explains:\n$privacy\nIf you would rather we didn't, just reply to this email with \"Please remove me\" and we will delete your details.",
+                'If this role turns out not to be the right fit, we may consider you for other suitable roles ' . Engagement::otherRoles($type) . ' over the next five years, as our <a href="' . $privacy . '" target="_blank" style="color:#7946B2;">privacy policy</a> explains. We may also send you updates about your application on WhatsApp, from +91 81228 12340. Reply STOP there at any time to stop them. If you would rather we didn\'t, just reply to this email with "Please remove me" and we will delete your details.',
+                "If this role turns out not to be the right fit, we may consider you for other suitable roles " . Engagement::otherRoles($type) . " over the next five years, as our privacy policy explains:\n$privacy\nWe may also send you updates about your application on WhatsApp, from +91 81228 12340. Reply STOP there at any time to stop them.\nIf you would rather we didn't, just reply to this email with \"Please remove me\" and we will delete your details.",
             ],
         ];
         if ($link) {

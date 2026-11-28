@@ -73,7 +73,7 @@ final class TraineeTechAck
             : "You're in: we've received your application for " . self::PUBLIC_TITLE;
         $preheader = $link ? "You're in. Level 2 takes about 2 minutes, and there's a side quest at the bottom."
                            : "You're in. Here's what happens next, plus a side quest at the bottom.";
-        $about = 'If this role turns out not to be the right fit, we may consider you for other suitable roles ' . Engagement::otherRoles($type) . ' over the next five years, as our privacy policy explains.';
+        $about = 'If this role turns out not to be the right fit, we may consider you for other suitable roles ' . Engagement::otherRoles($type) . ' over the next five years, as our privacy policy explains. We may also send you updates about your application on WhatsApp, from +91 81228 12340. Reply STOP there at any time to stop them.';
         $remove = 'If you would rather we didn\'t, just reply to this email with "Please remove me" and we will delete your details.';
         $reason = Engagement::footerReason($type);
         $wa = 'https://wa.me/?text=' . rawurlencode('Saw this and thought of you: ' . self::PUBLIC_TITLE . ', 5 days a week, for engineering freshers. Apply here: ' . self::JOB_URL);
