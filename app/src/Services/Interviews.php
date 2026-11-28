@@ -379,6 +379,9 @@ final class Interviews
             'steps' => [['You choose a time', 'From the link above, on your phone or computer.'], ['We confirm it', 'With the details and a calendar invite.'], ['A reminder on the day', 'So nothing is missed.']],
         ], $u, ['interview' => $id], [], 10, $userId);
         $db->run('UPDATE interviews SET invite_email_id = ? WHERE id = ?', [$emailId, $id]);
+        // WhatsApp too (interview_choose_time): its button opens https://recruit.eshcolglobal.com/i/{{1}} with this token.
+        (new WaBridge($this->app))->toCandidate((int) $a['candidate_id'], 'interview_choose_time', [$first !== '' ? $first : 'there', $a['client_display'], $a['title']],
+            'interview', $id, null, [$token]);
         Audit::log('interview_invited', 'candidate', (int) $a['candidate_id'], ['round' => $round, 'interview' => $id]);
         return [true, 'Sent: ' . $a['full_name'] . ' can now choose from ' . count($slots) . ' time' . (count($slots) === 1 ? '' : 's') . '.'];
     }
@@ -497,7 +500,8 @@ final class Interviews
         }
         $oldRound = (int) $iv['round'];
         $round = $round !== null ? max(1, min(9, $round)) : $oldRound;
-        $oldWhen = date('l j F, g:i A', strtotime((string) $iv['starts_at']));
+        $oldTs = (int) strtotime((string) $iv['starts_at']);
+        $oldWhen = date('l j F, g:i A', $oldTs);
         $newWhen = date('l j F, g:i A', $ts);
         $now = date('Y-m-d H:i:s');
         $db->run('UPDATE interview_slots SET interview_id = NULL WHERE interview_id = ?', [$id]);
@@ -519,6 +523,7 @@ final class Interviews
         $emailId = $this->designed('interview', $a, 'Interview rescheduled: ' . $a['title'] . ' with ' . $a['client_display'] . ', ' . date('j M Y, g:i A', $ts),
             $p, $u, ['interview' => $id, 'rescheduled' => true], $this->attachmentsFor($iv, $a), 10, $userId);
         $db->run('UPDATE interviews SET letter_email_id = ? WHERE id = ?', [$emailId, $id]);
+        $this->whatsApp($id, $a, false, $oldTs);
         $told = '';
         $contact = $db->one('SELECT name, email FROM client_contacts WHERE client_id = ? AND email IS NOT NULL ORDER BY id LIMIT 1', [$a['client_id']]);
         if ($contact) {
@@ -580,6 +585,7 @@ final class Interviews
         $files = $this->attachmentsFor($iv, $a);
         $emailId = $this->designed('interview', $a, $subject, $this->confirmation($iv, $a), $u, ['interview' => $id], $files, 10, $userId);
         $db->run('UPDATE interviews SET letter_email_id = ?, letter_sent_at = NOW() WHERE id = ?', [$emailId, $id]);
+        $this->whatsApp($id, $a);
         // Tell the client: straight away when the interview is today, or tomorrow and it's already past 6 pm (the 6 pm
         // email has gone); otherwise in one email at 6 pm with everything booked that day (Benjamin, 17 Nov 2026).
         $contact = $db->one('SELECT name, email FROM client_contacts WHERE client_id = ? AND email IS NOT NULL ORDER BY id LIMIT 1', [$a['client_id']]);
@@ -796,6 +802,33 @@ final class Interviews
         ];
     }
 
+    /** WhatsApp alongside the interview email: the template interview_invite (fixed or moved), or interview_reminder. */
+    private function whatsApp(int $interviewId, array $a, bool $reminder = false, ?int $movedFrom = null): void
+    {
+        $iv = $this->app->db->one('SELECT * FROM interviews WHERE id = ?', [$interviewId]);
+        if (!$iv || !$a['candidate_id']) {
+            return;
+        }
+        $ts = strtotime((string) $iv['starts_at']);
+        $role = $a['title'] . ' with ' . $a['client_display'];
+        $W = new WaBridge($this->app);
+        if ($reminder) {
+            $W->toCandidate((int) $a['candidate_id'], 'interview_reminder', [$role, 'today, ' . date('l j F', $ts), date('g:i A', $ts)], 'interview', $interviewId);
+            return;
+        }
+        $place = match ($iv['kind'] ?? '') {
+            'virtual' => 'online (the joining link is in your email)',
+            'in_person' => one_line((string) ($iv['address'] ?? '')) ?: 'as in your email',
+            default => 'by phone (they will call you)',
+        };
+        if ($movedFrom) {
+            $W->toCandidate((int) $a['candidate_id'], 'interview_rescheduled', [$this->firstName($a) ?: 'there', $role, date('l j F', $movedFrom), date('g:i A', $movedFrom),
+                date('l j F', $ts), date('g:i A', $ts), $place], 'interview', $interviewId);
+            return;
+        }
+        $W->toCandidate((int) $a['candidate_id'], 'interview_invite', [$this->firstName($a) ?: 'there', $role, date('l j F', $ts), date('g:i A', $ts), $place], 'interview', $interviewId);
+    }
+
     /** Queues a candidate email in the house design, signed by whoever arranged it, with the LinkedIn button and any files. */
     private function designed(string $kind, array $to, string $subject, array $p, array $u, array $meta, array $files, int $priority, ?int $userId): int
     {
@@ -893,6 +926,7 @@ final class Interviews
             }
             $this->designed('interview', $a, 'Reminder: your interview today at ' . date('g:i A', strtotime($iv['starts_at'])), $this->reminder($iv, $a),
                 $this->sender((int) $iv['created_by']), ['interview' => (int) $iv['id'], 'reminder' => true], [], 5, null);
+            $this->whatsApp((int) $iv['id'], $a, true);
         }
         return $due ? count($due) . ' interview reminder(s) queued' : '';
     }

@@ -9,7 +9,7 @@
   </div>
 <?php endif; ?>
 
-<p class="small" style="margin:-8px 0 16px"><a class="btn small ghost" href="/settings/staffing">Staffing: statutory rates, minimum wages, licence</a></p>
+<p class="small" style="margin:-8px 0 16px"><a class="btn small ghost" href="/settings/staffing">Staffing: statutory rates, minimum wages, licence</a> <a class="btn small ghost" href="/settings/whatsapp">WhatsApp to candidates</a></p>
 
 <div class="grid g2">
   <section class="card" id="stages">

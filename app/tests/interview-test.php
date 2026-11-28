@@ -93,6 +93,9 @@ $iv = $db->one("SELECT * FROM interviews WHERE application_id = ? AND status = '
 $check('invited: ' . $msg, $okInv && (bool) $iv);
 $inv = $mail($p, 'Choose your interview time%');
 $link = $svc->link((int) $iv['id']);
+$waq = $db->one("SELECT * FROM whatsapp_queue WHERE template = 'interview_choose_time' AND related_id = ?", [$iv['id']]);
+$check('WhatsApp too: interview_choose_time, with their own booking link as the button value', $waq && (int) $waq['candidate_id'] === $p
+    && str_ends_with($link, '/i/' . (json_decode((string) $waq['button_vars'], true)[0] ?? 'none')) && (json_decode((string) $waq['variables'], true)[0] ?? '') === 'Priya');
 $check('the email has the times and a "Choose my time" link', $inv && str_contains($inv['html'], 'Choose my time') && str_contains($inv['text'], $link) && str_contains($inv['text'], date('l j F', strtotime($t1))));
 $check('house design (15 Nov 2026): "Good news, Priya." headline; the preview line has no "Good news" (Benjamin)', $inv && str_contains($inv['text'], 'Good news, Priya.')
     && preg_match('/display:none[^>]*>[^<]*would like to meet you\./', $inv['html']) && !preg_match('/display:none[^>]*>Good news/', $inv['html'])

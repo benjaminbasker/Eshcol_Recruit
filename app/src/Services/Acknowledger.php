@@ -101,6 +101,13 @@ final class Acknowledger
             $db->run('UPDATE questionnaires SET email_id = ? WHERE id = ? OR parent_id = ?', [$id, $lead, $lead]);
         }
         Audit::log('ack_queued', 'candidate', $candidateId, ['email' => $id, 'held' => (bool) $hold, 'details_link' => (bool) $lead]);
+        // WhatsApp too, at the same time as the email (not while the address is held for a check).
+        if (!$hold) {
+            $title = (string) ($db->col('SELECT title FROM roles WHERE id = ?', [$roleId]) ?: 'a role with us');
+            $first = trim((string) ($c['first_name'] ?: strtok((string) $c['full_name'], ' ')));
+            (new WaBridge($this->app))->toCandidate($candidateId, 'application_received', [$first !== '' ? mb_convert_case(mb_strtolower($first), MB_CASE_TITLE) : 'there', $title],
+                'ack', $id, date('Y-m-d H:i:s', time() + self::DELAY_MINUTES * 60));
+        }
         // The consent record (B2): the thank-you email tells them we may keep their CV for other roles, and how to say no.
         (new Consents($this->app))->record($candidateId, 'notice_sent', 'ack_email', $id);
         return $hold ? $this->r('held', "Thank-you email waits for you to check the address: $hold", $id)

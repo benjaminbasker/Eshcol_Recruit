@@ -212,6 +212,16 @@ $tasks = [
         $uid = (int) $app->db->col("SELECT id FROM users WHERE role = 'owner' AND is_active = 1 ORDER BY id LIMIT 1");
         return $uid ? (new \Eshcol\Ats\Services\DatabaseSweep($app))->runDaily($uid) : 'no owner to add them as';
     }],
+    // WhatsApp to candidates (28 Nov 2026): send what is due, then ask WABridge how the last few days' messages fared.
+    'wabridge' => [fn () => !(new \Eshcol\Ats\Services\Migrator($app))->pending() && (bool) $app->db->col("SELECT 1 FROM whatsapp_queue WHERE (status = 'queued' AND not_before <= NOW())
+        OR (status = 'sent' AND (dlr_status IS NULL OR dlr_status IN ('sent','accepted','submitted')) AND sent_at >= NOW() - INTERVAL 3 DAY) LIMIT 1"), function () use ($app) {
+        $W = new \Eshcol\Ats\Services\WaBridge($app);
+        return trim($W->processQueue(40) . ' ' . $W->pollDelivery(60));
+    }],
+    // WhatsApp the evening before someone joins (joining_reminder).
+    'wa_joining' => [fn () => $dueDaily('wa_joining', 18) && !(new \Eshcol\Ats\Services\Migrator($app))->pending(), function () use ($app) {
+        return (new \Eshcol\Ats\Services\WaMessages($app))->joiningReminders();
+    }],
     // Reading back from the HRMS (28 Nov 2026): its statutory rates and the people leaving, once each morning.
     'hrms_feeds' => [fn () => $dueDaily('hrms_feeds', 6) && !(new \Eshcol\Ats\Services\Migrator($app))->pending(), function () use ($app) {
         return (new \Eshcol\Ats\Services\HrmsLink($app))->fetchFeeds();

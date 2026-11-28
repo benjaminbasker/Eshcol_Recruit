@@ -164,6 +164,7 @@ final class StageMover
             } else {
                 $db->run("UPDATE joinings SET status = 'withdrawn' WHERE application_id = ? AND status IN ('ready', 'downloaded')", [$appId]);
             }
+            (new WaMessages($this->app))->afterStage($appId, $to);
             $pid = (new Placements($this->app))->afterStage($appId, $to);
             if ($pid && $byOwner && in_array((string) $db->col('SELECT status FROM placements WHERE id = ?', [$pid]), ['offer', 'joined'], true)) {
                 $msgs[] = 'Add the offer and joining details in the Placement box under this position.';

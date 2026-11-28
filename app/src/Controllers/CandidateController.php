@@ -597,6 +597,29 @@ final class CandidateController extends Controller
      * Opens WhatsApp with a ready-written message (you press send there). Notes it on the
      * candidate, so the history shows who was messaged about what.
      */
+    /** WhatsApp: ask for a call, with a day and a time window (call_request). */
+    public function waCall(int $id): never
+    {
+        $this->findOr404('candidates', $id);
+        $appId = (int) ($_POST['application_id'] ?? 0);
+        $err = $this->db->col('SELECT 1 FROM applications WHERE id = ? AND candidate_id = ?', [$appId, $id])
+            ? (new \Eshcol\Ats\Services\WaMessages($this->app))->callRequest($appId, (string) ($_POST['day'] ?? ''), (string) ($_POST['from'] ?? ''), (string) ($_POST['to'] ?? ''))
+            : 'Not found.';
+        Http::flash($err ? 'error' : 'ok', $err ?? 'Call request queued on WhatsApp. Their answer comes to your phone.');
+        Http::redirect("/candidates/$id#app-$appId");
+    }
+
+    /** WhatsApp: "we tried to call you" (missed_call). */
+    public function waMissed(int $id): never
+    {
+        $this->findOr404('candidates', $id);
+        $appId = (int) ($_POST['application_id'] ?? 0);
+        $err = $this->db->col('SELECT 1 FROM applications WHERE id = ? AND candidate_id = ?', [$appId, $id])
+            ? (new \Eshcol\Ats\Services\WaMessages($this->app))->missedCall($appId) : 'Not found.';
+        Http::flash($err ? 'error' : 'ok', $err ?? '"We tried to call you" queued on WhatsApp.');
+        Http::redirect("/candidates/$id#app-$appId");
+    }
+
     public function whatsapp(int $id): never
     {
         $c = $this->findOr404('candidates', $id);

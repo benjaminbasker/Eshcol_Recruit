@@ -529,6 +529,17 @@ if ($hasMsgs):
           </details>
         <?php endif; ?>
         <div id="interviews"><?php include __DIR__ . '/_interviews.php'; ?></div>
+        <?php if (!\Eshcol\Ats\Services\Contact::silenced($c) && empty($c['whatsapp_off'])): ?>
+        <details class="wa-actions" style="margin:0 0 12px"><summary class="small"><b>WhatsApp</b>: ask for a call, or say you couldn't reach them</summary>
+          <form method="post" action="/candidates/<?= (int) $c['id'] ?>/wa-call" class="row" style="align-items:flex-end;margin-top:8px"><?= csrf() ?><input type="hidden" name="application_id" value="<?= (int) $a['id'] ?>">
+            <div class="field" style="flex:0 1 160px"><label for="wad<?= (int) $a['id'] ?>">Day</label><input type="date" id="wad<?= (int) $a['id'] ?>" name="day" min="<?= date('Y-m-d') ?>" value="<?= date('Y-m-d', strtotime('+1 weekday')) ?>" required></div>
+            <div class="field" style="flex:0 1 120px"><label for="waf<?= (int) $a['id'] ?>">From</label><input type="time" id="waf<?= (int) $a['id'] ?>" name="from" value="11:00" required></div>
+            <div class="field" style="flex:0 1 120px"><label for="wat<?= (int) $a['id'] ?>">To</label><input type="time" id="wat<?= (int) $a['id'] ?>" name="to" value="13:00" required></div>
+            <div class="field"><button class="btn small" type="submit">Ask for a call</button></div></form>
+          <form method="post" action="/candidates/<?= (int) $c['id'] ?>/wa-missed" style="margin-top:6px"><?= csrf() ?><input type="hidden" name="application_id" value="<?= (int) $a['id'] ?>">
+            <button class="btn ghost small" type="submit">We tried to call: couldn't reach them</button></form>
+        </details>
+        <?php endif; ?>
         <?php if (empty($a['is_pool'])) { include __DIR__ . '/_decide.php'; } ?>
         <?php include __DIR__ . '/../partials/scorecard.php'; ?>
         <details style="margin-top:12px"><summary class="small">Set your own score</summary>

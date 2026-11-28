@@ -445,6 +445,11 @@ final class Questionnaires
             'status' => $hold ? 'held' : 'pending', 'hold_reason' => $hold, 'created_by' => $userId,
         ]);
         $db->run('UPDATE questionnaires SET email_id = ? WHERE id = ? OR parent_id = ?', [$id, $leadId, $leadId]);
+        // WhatsApp too, with the first request (not the reminders, not while the address is held): questions_request.
+        if ($step === 'invite' && !$hold && $roles) {
+            (new WaBridge($this->app))->toCandidate((int) $c['id'], 'questions_request', [$first !== '' ? $first : 'there', (string) ($roles[0]['title'] ?? 'the role')],
+                'questionnaire', $leadId, null, [substr($link, strrpos($link, '/') + 1)]);
+        }
         return $id;
     }
 

@@ -293,6 +293,17 @@ $router->post('/joinings/{id}/refresh', [\Eshcol\Ats\Controllers\JoiningControll
 $router->post('/joinings/hrms-link', [\Eshcol\Ats\Controllers\JoiningController::class, 'hrmsLink']);
 // Reading back from the HRMS (28 Nov 2026): rates and leavers.
 $router->post('/joinings/hrms-fetch', [\Eshcol\Ats\Controllers\JoiningController::class, 'fetchHrms']);
+// WhatsApp to candidates through WABridge (28 Nov 2026).
+$router->get('/settings/whatsapp', [\Eshcol\Ats\Controllers\WaBridgeController::class, 'index']);
+$router->post('/candidates/{id}/wa-call', [CandidateController::class, 'waCall']);
+$router->post('/candidates/{id}/wa-missed', [CandidateController::class, 'waMissed']);
+$router->post('/settings/whatsapp/auto', [\Eshcol\Ats\Controllers\WaBridgeController::class, 'auto']);
+// "No longer interested" from the call_request WhatsApp button: the candidate's own signed link.
+$router->get('/n/{token}', [\Eshcol\Ats\Controllers\NoLongerController::class, 'show'], public: true);
+$router->post('/n/{token}', [\Eshcol\Ats\Controllers\NoLongerController::class, 'confirm'], public: true);
+$router->post('/settings/whatsapp', [\Eshcol\Ats\Controllers\WaBridgeController::class, 'save']);
+$router->post('/settings/whatsapp/sync', [\Eshcol\Ats\Controllers\WaBridgeController::class, 'sync']);
+$router->post('/settings/whatsapp/test', [\Eshcol\Ats\Controllers\WaBridgeController::class, 'test']);
 $router->post('/joinings/leavers/{id}/handled', [\Eshcol\Ats\Controllers\JoiningController::class, 'leaverHandled']);
 $router->post('/settings/staffing/rates/hrms', [\Eshcol\Ats\Controllers\StaffingController::class, 'useHrms']);
 // The HRMS's signed server-to-server link (25 Nov 2026): it fetches joining records and reports what it imported.
